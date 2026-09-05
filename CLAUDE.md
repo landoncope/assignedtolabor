@@ -6,13 +6,20 @@ current whenever a decision is made or reversed. Dates below are absolute (YYYY-
 
 ## Status (2026-09-04)
 
-Pre-MVP. The repo is empty except for docs. No stack has been chosen yet; the choice is
-gated on the MVP scope Landon will provide (see "Open decisions").
+Pre-MVP, requirements gathered, stack proposed (see "Decisions"). Waiting on Travis's
+source zip (prompt in `docs/travis-code-handoff-prompt.md`) and on Landon's answers to
+the remaining open questions. No app code written yet.
 
 ## What this is
 
-Assigned To Labor is Travis's faith-oriented video project. In his prototype it is one
-piece of a larger site ("The Holy Rebellion" / "WagePeace" at theholyrebellion.org):
+Assigned To Labor is a standalone web service for spreading faith-promoting videos
+about The Church of Jesus Christ of Latter-day Saints. Members of the public record or
+upload short videos; **managers** who are responsible for a geographic area (possibly
+area + language) review the videos in a queue; approved videos are shared to social
+media. Travis is the product owner. Landon pays for hosting.
+
+In Travis's prototype it was one piece of a larger site ("The Holy Rebellion" /
+"WagePeace" at theholyrebellion.org):
 
 - An **anonymous "Quick Upload"** flow: a visitor scans a QR code, is guided through a
   3-step script builder (hook / body / call-to-action), records a short testimony video
@@ -70,17 +77,48 @@ Travis's AI session on 2026-09-04). Read `README.md`, `ARCHITECTURE.md`, and
 - `psql` 17 available locally. No Docker.
 - Commits end with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
 
-## Open decisions (answer these before writing app code)
+## Decisions (2026-09-04, confirmed by Landon unless marked proposed)
 
-1. MVP scope: which prototype features survive? (quick upload only? dashboard? teams?
-   gamification? AI script assistant? native app?)
-2. Keep Supabase (auth + storage + anon sign-in already solved) or move to DO Postgres +
-   DO Spaces + our own auth? Supabase is the fast path if Travis's project stays.
-3. Hosting: DO App Platform (Landon's default) vs Vercel (already set up, Travis's team).
-4. Is Assigned To Labor a standalone product on its own domain, or does it stay a section
-   of theholyrebellion.org? Assumption: standalone on assignedtolabor.org.
-5. Who moderates uploads, and what happens to approved videos (posted where)?
-6. Native app: keep the Capacitor shell pointed at the new domain, or web-only for MVP?
+- **Standalone product** on assignedtolabor.org. Fresh codebase in this repo; the
+  prototype is a spec and a parts bin, not a base.
+- **MVP scope:** anonymous quick upload (QR + script builder + in-browser recorder),
+  accounts with "my videos", areas with managers and a review queue, admin (roles,
+  areas, review), social media sharing of approved videos. **Out:** gamification,
+  native app, AI fact-checker. AI script drafting is a post-MVP nice-to-have; the
+  template-based script builder (hook / body / CTA) is in.
+- **Supabase** for Postgres, Auth, and video Storage for the MVP. Proposed: a NEW
+  Supabase project under Landon's account (Landon pays; Travis's project is entangled
+  with the other site). Storage sits behind one small module so it can move to an
+  S3-compatible bucket (DO Spaces / Cloudflare R2) if egress cost grows. Original
+  video files are purged ~7 days after approval-and-post or rejection; metadata stays.
+- **Hosting (proposed):** DigitalOcean App Platform, Landon's account, GitHub
+  deploy-on-push from `main`, like `../landoncope.dev`. Uploads go browser-to-Supabase
+  directly, so the app server stays small.
+- **Stack (proposed):** Next.js (App Router) + TypeScript + Tailwind v4, supabase-js
+  with generated DB types, RLS as the authorization layer, Supabase CLI migrations in
+  `supabase/migrations/`. Playwright for the handful of end-to-end flows that matter
+  (quick upload, review, role gating).
+- **Auth (proposed):** Google sign-in + email magic link for everyone; no passwords.
+  Anonymous Supabase sessions for quick upload, upgradeable to a real account. Managers
+  and admins are promoted by an admin, never self-signup.
+- **Social posting (proposed, two phases):** Phase 1 "assisted posting": approved videos
+  land in a ready-to-post queue with the file, caption, and hashtags; a human posts from
+  the platform app and marks it posted. Phase 2: automate Meta (Instagram/Facebook
+  Reels) and YouTube Shorts via their APIs once app review and quota increases are
+  granted. Both platforms require reviews that take weeks and cap posts per day, so
+  automation cannot gate the MVP.
+
+## Open questions for Landon / Travis
+
+1. Areas: how are they defined (country, state, mission, stake, language)? Can one
+   manager cover several? Does the uploader pick the area, or is it inferred?
+2. Social accounts: one central Assigned To Labor account per platform, or one per
+   area owned by the manager? Which platforms first (Instagram, YouTube, TikTok,
+   Facebook, X)?
+3. Does the site itself show approved videos publicly (a feed), or is social media the
+   only outlet? A public feed changes egress cost and storage lifecycle.
+4. Who is the first admin (Travis?), and are there existing managers to seed?
+5. Does Travis have Meta/YouTube business accounts already, or do we create them?
 
 ## Working rules for Claude in this repo
 
