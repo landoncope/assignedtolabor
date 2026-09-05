@@ -6,9 +6,21 @@ current whenever a decision is made or reversed. Dates below are absolute (YYYY-
 
 ## Status (2026-09-04)
 
-Pre-MVP, requirements gathered, stack proposed (see "Decisions"). Waiting on Travis's
-source zip (prompt in `docs/travis-code-handoff-prompt.md`) and on Landon's answers to
-the remaining open questions. No app code written yet.
+Pre-MVP. Requirements and stack are decided (see "Decisions"). Next: scaffold the app
+and schema. Still waiting on Travis's source zip (prompt in
+`docs/travis-code-handoff-prompt.md`) and on the social-media answers below. Needed
+from Landon before anything can run: the new Supabase project and the new Vercel
+project in Travis's accounts (see "Account setup").
+
+## Account setup (one-time, needs dashboard access)
+
+1. Supabase: org "Travis" -> New project `assignedtolabor`, region us-west-2. Save the
+   database password in a password manager. Enable Google and Email (magic link)
+   providers and anonymous sign-ins.
+2. Vercel: team `travislish-8017s-projects` -> New project from GitHub
+   `landoncope/assignedtolabor` (requires connecting Landon's GitHub to the team).
+3. Google Cloud: OAuth client for Google sign-in (Supabase docs give the redirect URL).
+4. Namecheap: point `assignedtolabor.org` at Vercel; add `.com` as a redirect domain.
 
 ## What this is
 
@@ -73,7 +85,8 @@ Travis's AI session on 2026-09-04). Read `README.md`, `ARCHITECTURE.md`, and
   DO-managed domains). Vercel is acceptable if Supabase stays.
 - Sibling Next.js project for conventions: `../landoncope.dev` (Next.js + Drizzle + pg +
   Tailwind v4, migrations run at container start via `scripts/migrate.mjs`).
-- GitHub: `landoncope/assignedtolabor`. `gh` is installed but not authenticated.
+- GitHub: `landoncope/assignedtolabor`, `gh` authenticated. Work on branches, PRs
+  into `main`; `main` deploys to production.
 - `psql` 17 available locally. No Docker.
 - Commits end with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
 
@@ -86,39 +99,44 @@ Travis's AI session on 2026-09-04). Read `README.md`, `ARCHITECTURE.md`, and
   areas, review), social media sharing of approved videos. **Out:** gamification,
   native app, AI fact-checker. AI script drafting is a post-MVP nice-to-have; the
   template-based script builder (hook / body / CTA) is in.
-- **Supabase** for Postgres, Auth, and video Storage for the MVP. Proposed: a NEW
-  Supabase project under Landon's account (Landon pays; Travis's project is entangled
-  with the other site). Storage sits behind one small module so it can move to an
-  S3-compatible bucket (DO Spaces / Cloudflare R2) if egress cost grows. Original
-  video files are purged ~7 days after approval-and-post or rejection; metadata stays.
-- **Hosting (proposed):** DigitalOcean App Platform, Landon's account, GitHub
-  deploy-on-push from `main`, like `../landoncope.dev`. Uploads go browser-to-Supabase
-  directly, so the app server stays small.
-- **Stack (proposed):** Next.js (App Router) + TypeScript + Tailwind v4, supabase-js
+- **Supabase** for Postgres, Auth, and video Storage. A NEW Supabase project named
+  `assignedtolabor` in Travis's org (Landon has admin access), separate from the
+  `wagepeace` project so the schema stays clean. Free tier to start; expect to move to
+  Pro ($25/mo) because Free caps uploads at 50 MB and pauses idle projects. If the
+  project takes off it moves to Landon's account. Storage sits behind one small module
+  so it can move to an S3-compatible bucket if egress cost grows. Original video files
+  are purged ~7 days after posting or rejection; metadata stays. The site never serves
+  videos publicly; social media is the only outlet.
+- **Hosting:** Vercel, a NEW project `assignedtolabor` in Travis's team, connected to
+  GitHub `landoncope/assignedtolabor` with production deploys from `main` and preview
+  deploys per PR. Never `vercel --prod` from a laptop. Uploads go browser-to-Supabase
+  directly, so the app server stays small. Check which Vercel plan the team is on;
+  Hobby forbids team members, so the invite implies Pro billing.
+- **Stack:** Next.js (App Router) + TypeScript + Tailwind v4, supabase-js
   with generated DB types, RLS as the authorization layer, Supabase CLI migrations in
   `supabase/migrations/`. Playwright for the handful of end-to-end flows that matter
   (quick upload, review, role gating).
-- **Auth (proposed):** Google sign-in + email magic link for everyone; no passwords.
+- **Areas:** an admin-defined name plus a language (no geo logic in the app). A
+  manager can be assigned to several areas. Uploaders pick their area from a list.
+- **First admins:** Landon Cope (landoncope@gmail.com) and Travis Lish
+  (travis.lish@gmail.com). Seed them in a migration or the first-run setup.
+- **Auth:** Google sign-in + email magic link for everyone; no passwords.
   Anonymous Supabase sessions for quick upload, upgradeable to a real account. Managers
   and admins are promoted by an admin, never self-signup.
-- **Social posting (proposed, two phases):** Phase 1 "assisted posting": approved videos
+- **Social posting (two phases):** Phase 1 "assisted posting": approved videos
   land in a ready-to-post queue with the file, caption, and hashtags; a human posts from
   the platform app and marks it posted. Phase 2: automate Meta (Instagram/Facebook
   Reels) and YouTube Shorts via their APIs once app review and quota increases are
   granted. Both platforms require reviews that take weeks and cap posts per day, so
   automation cannot gate the MVP.
 
-## Open questions for Landon / Travis
+## Open questions (Landon is asking Travis)
 
-1. Areas: how are they defined (country, state, mission, stake, language)? Can one
-   manager cover several? Does the uploader pick the area, or is it inferred?
-2. Social accounts: one central Assigned To Labor account per platform, or one per
+1. Social accounts: one central Assigned To Labor account per platform, or one per
    area owned by the manager? Which platforms first (Instagram, YouTube, TikTok,
    Facebook, X)?
-3. Does the site itself show approved videos publicly (a feed), or is social media the
-   only outlet? A public feed changes egress cost and storage lifecycle.
-4. Who is the first admin (Travis?), and are there existing managers to seed?
-5. Does Travis have Meta/YouTube business accounts already, or do we create them?
+2. Does Travis have Meta/YouTube business accounts already, or do we create them?
+3. Are there existing managers or areas to seed?
 
 ## Working rules for Claude in this repo
 
