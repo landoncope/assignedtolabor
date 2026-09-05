@@ -14,11 +14,11 @@ project in Travis's accounts (see "Account setup").
 
 ## Account setup (one-time, needs dashboard access)
 
-1. Supabase: org "Travis" -> New project `assignedtolabor`, region us-west-2. Save the
-   database password in a password manager. Enable Google and Email (magic link)
-   providers and anonymous sign-ins.
-2. Vercel: team `travislish-8017s-projects` -> New project from GitHub
-   `landoncope/assignedtolabor` (requires connecting Landon's GitHub to the team).
+1. Supabase (Landon's account): New project `assignedtolabor`, region us-west-2. Save
+   the database password in a password manager. Enable Google and Email (magic link)
+   providers and anonymous sign-ins. PENDING.
+2. Vercel: team `travislish-8017s-projects` -> project from GitHub
+   `landoncope/assignedtolabor`. DONE 2026-09-04.
 3. Google Cloud: OAuth client for Google sign-in (Supabase docs give the redirect URL).
 4. Namecheap: point `assignedtolabor.org` at Vercel; add `.com` as a redirect domain.
 
@@ -100,10 +100,10 @@ Travis's AI session on 2026-09-04). Read `README.md`, `ARCHITECTURE.md`, and
   native app, AI fact-checker. AI script drafting is a post-MVP nice-to-have; the
   template-based script builder (hook / body / CTA) is in.
 - **Supabase** for Postgres, Auth, and video Storage. A NEW Supabase project named
-  `assignedtolabor` in Travis's org (Landon has admin access), separate from the
-  `wagepeace` project so the schema stays clean. Free tier to start; expect to move to
-  Pro ($25/mo) because Free caps uploads at 50 MB and pauses idle projects. If the
-  project takes off it moves to Landon's account. Storage sits behind one small module
+  `assignedtolabor` in **Landon's own Supabase account** (Landon lacked permission to
+  create projects in Travis's org, and Landon pays anyway). Free tier to start; expect
+  to move to Pro ($25/mo) because Free caps uploads at 50 MB and pauses idle projects.
+  Invite Travis as a read-only org member later. Storage sits behind one small module
   so it can move to an S3-compatible bucket if egress cost grows. Original video files
   are purged ~7 days after posting or rejection; metadata stays. The site never serves
   videos publicly; social media is the only outlet.
