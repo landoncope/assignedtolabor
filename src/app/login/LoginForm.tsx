@@ -9,18 +9,18 @@ export default function LoginForm({ next }: { next: string }) {
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
-  const callback = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
+  const callback = () => `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
 
   async function google() {
     setBusy(true); setError("");
-    const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: callback } });
+    const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: callback() } });
     if (error) { setError(error.message); setBusy(false); }
   }
 
   async function magicLink(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true); setError("");
-    const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: callback } });
+    const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: callback() } });
     setBusy(false);
     if (error) setError(error.message); else setSent(true);
   }

@@ -43,3 +43,7 @@ next-env.d.ts
 # local env
 .env*
 !.env.example
+
+# supabase cli
+supabase/.temp/
+supabase/.branches/
