@@ -32,6 +32,7 @@ export default function VideoRecorder({
   const clipStartRef = useRef(0);
   const clipIdRef = useRef(0);
   const firstClipRef = useRef(true);
+  const introTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clipsRef = useRef<Clip[]>([]);
 
   const [cam, setCam] = useState<"idle" | "live" | "recording" | "error">("idle");
@@ -45,6 +46,7 @@ export default function VideoRecorder({
   clipsRef.current = clips;
 
   function teardown() {
+    if (introTimerRef.current) { clearTimeout(introTimerRef.current); introTimerRef.current = null; }
     const rec = recorderRef.current;
     if (rec && rec.state !== "inactive") { rec.onstop = null; try { rec.stop(); } catch { /* ignore */ } }
     recorderRef.current = null;
@@ -83,19 +85,16 @@ export default function VideoRecorder({
     return () => clearInterval(id);
   }, [cam]);
 
-  useEffect(() => {
-    if (tips !== "show") return;
-    const id = setTimeout(() => { setTips("fade"); setCountdown(3); }, 2200);
-    return () => clearTimeout(id);
-  }, [tips]);
-
-  useEffect(() => {
-    if (countdown === null) return;
-    if (countdown <= 0) { setCountdown(null); setTips("off"); beginClip(); return; }
-    const id = setTimeout(() => setCountdown((c) => (c === null ? null : c - 1)), 1000);
-    return () => clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [countdown]);
+  // Intro before the first clip: tips card (2.2s), then 3-2-1, then record.
+  function runCountdown(n: number) {
+    if (n <= 0) { setCountdown(null); setTips("off"); beginClip(); return; }
+    setCountdown(n);
+    introTimerRef.current = setTimeout(() => runCountdown(n - 1), 1000);
+  }
+  function startIntro() {
+    setTips("show");
+    introTimerRef.current = setTimeout(() => { setTips("fade"); runCountdown(3); }, 2200);
+  }
 
   function pickMime() {
     const types = ["video/mp4", "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"];
@@ -139,7 +138,7 @@ export default function VideoRecorder({
     if (cam === "error") { startCamera(); return; }
     if (cam === "recording") { recorderRef.current?.stop(); return; }
     if (cam === "live") {
-      if (firstClipRef.current) { firstClipRef.current = false; setTips("show"); }
+      if (firstClipRef.current) { firstClipRef.current = false; startIntro(); }
       else beginClip();
     }
   }

@@ -32,15 +32,25 @@ body {
   font-family: var(--font-sans);
 }
 
-/* Shared form controls. */
-.input {
-  @apply w-full rounded-lg border border-line bg-card px-3 py-2 text-base outline-none focus:border-accent;
-}
-.btn {
+/* Shared controls. Defined as utilities so they can be composed with @apply. */
+@utility btn {
   @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed;
 }
-.btn-primary { @apply btn bg-accent text-accent-ink hover:brightness-110; }
-.btn-secondary { @apply btn border border-line bg-card text-foreground hover:bg-background; }
-.btn-danger { @apply btn border border-danger/40 bg-card text-danger hover:bg-danger/5; }
-.card { @apply rounded-xl border border-line bg-card p-4; }
-.label { @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-muted; }
+@utility input {
+  @apply w-full rounded-lg border border-line bg-card px-3 py-2 text-base outline-none focus:border-accent;
+}
+@utility card {
+  @apply rounded-xl border border-line bg-card p-4;
+}
+@utility label {
+  @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-muted;
+}
+@utility btn-primary {
+  @apply btn bg-accent text-accent-ink hover:brightness-110;
+}
+@utility btn-secondary {
+  @apply btn border border-line bg-card text-foreground hover:bg-background;
+}
+@utility btn-danger {
+  @apply btn border border-danger/40 bg-card text-danger hover:bg-danger/5;
+}
