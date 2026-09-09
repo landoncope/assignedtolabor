@@ -6,17 +6,17 @@ current whenever a decision is made or reversed. Dates below are absolute (YYYY-
 
 ## Status (2026-09-04)
 
-Pre-MVP. Requirements and stack are decided (see "Decisions"). Next: scaffold the app
-and schema. Still waiting on Travis's source zip (prompt in
-`docs/travis-code-handoff-prompt.md`) and on the social-media answers below. Needed
-from Landon before anything can run: the new Supabase project and the new Vercel
-project in Travis's accounts (see "Account setup").
+MVP scaffolded on branch `scaffold` (PR open), not yet run against a real database.
+Build, lint, and typecheck are clean. Blocked on the Supabase project and keys from
+Landon (see "Account setup"). Once they arrive: `npm run db:push`, run the flows end to
+end (anonymous upload, magic-link login, review, admin), fix what breaks, merge.
 
 ## Account setup (one-time, needs dashboard access)
 
 1. Supabase (Landon's account): New project `assignedtolabor`, region us-west-2. Save
    the database password in a password manager. Enable Google and Email (magic link)
-   providers and anonymous sign-ins. PENDING.
+   providers and anonymous sign-ins. Add `https://assignedtolabor.org/auth/callback` and
+   `http://localhost:3000/auth/callback` to Redirect URLs. PENDING.
 2. Vercel: team `travislish-8017s-projects` -> project from GitHub
    `landoncope/assignedtolabor`. DONE 2026-09-04.
 3. Google Cloud: OAuth client for Google sign-in (Supabase docs give the redirect URL).
@@ -143,6 +143,53 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
 1. Are the existing Philippines / West Africa / East Africa Instagram accounts Business
    or Creator accounts linked to a Facebook Page? Needed for API posting in phase 2.
 2. Who manages each existing area (emails), so we can seed `area_managers`?
+
+## Codebase
+
+Next.js 16 (App Router, Turbopack, React 19), TypeScript, Tailwind v4, supabase-js +
+@supabase/ssr. Read `node_modules/next/dist/docs/` before using a Next API from memory:
+middleware is `src/proxy.ts`, and `params`, `searchParams`, `cookies()` are async only.
+
+```
+supabase/migrations/        schema + RLS + storage bucket (apply with npm run db:push)
+supabase/config.toml        Supabase CLI config (anonymous sign-ins on)
+src/proxy.ts                session refresh + redirects for /my, /review, /admin
+src/lib/supabase/           client.ts (browser), server.ts (cookies), admin.ts (service role)
+src/lib/auth.ts             getViewer / requireUser / requireManager / requireAdmin
+src/lib/types.ts            row types, areaLabel(), STATUS_LABEL
+src/lib/script.ts           hooks, body templates, CTAs, consent copy
+src/lib/upload-video.ts     browser -> signed upload URL -> videos row
+src/lib/merge-clips.ts      ffmpeg.wasm clip concat (runtime copied to public/ffmpeg on postinstall)
+src/components/             Nav, VideoRecorder (multi-clip + teleprompter), VideoPlayer (signed URL)
+src/app/                    / landing, /upload flow, /qr poster, /login, /auth/*, /my,
+                            /review (+/[id]), /admin, /api/videos/[id]/playback-url, /api/cron/purge
+```
+
+Commands: `npm run dev`, `npm run build`, `npm run lint`, `npm run typecheck`,
+`npm run db:push` (after `npx supabase link --project-ref <ref>`), `npm run db:types`.
+
+### Data model and rules
+
+- `profiles` mirrors `auth.users` (trigger). `role` is `member` or `admin`. Admin is
+  granted automatically to emails in `admin_seed_emails`. Managers are rows in
+  `area_managers`; `manager_invites` holds emails that have not signed in yet and is
+  applied by the same trigger on first sign-in or on anonymous-to-email upgrade.
+- `areas` = name + language + optional `instagram_handle`. `videos.area_id` null means
+  the admin queue ("Not sure" in the upload flow).
+- `videos.status`: pending -> approved -> posted, or pending/approved -> rejected.
+  Reviewers may reopen. `script` is `{hook, body, cta}` and doubles as the caption.
+- Authorization lives in RLS (`is_admin()`, `can_manage_area()`), not in app code.
+  Server actions in `src/app/review/actions.ts` and `src/app/admin/actions.ts` only shape
+  the write. The `guard_video_update` trigger stops uploaders changing status.
+- Files: private `videos` bucket at `{user_id}/{ts}.{ext}`, 500 MB cap. Playback is a
+  1-hour signed URL from `/api/videos/[id]/playback-url` using the caller's session.
+  `/api/cron/purge` (daily, `CRON_SECRET` bearer) deletes files 7 days after posted or
+  rejected and sets `file_purged_at`.
+- Anonymous upload: `signInAnonymously()` on submit; "Keep me posted" calls
+  `updateUser({email})`, which turns the same user into a real account after they
+  confirm. Anonymous sessions are redirected away from /review and /admin but may see /my.
+- Env vars (names only): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+  `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SITE_URL`, `CRON_SECRET`. Template in `.env.example`.
 
 ## Working rules for Claude in this repo
 
