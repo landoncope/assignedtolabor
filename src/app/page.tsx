@@ -14,8 +14,10 @@ export default function Home() {
         <Link href="/upload" className="btn-primary mt-8 px-6 py-3 text-base">Record a video</Link>
         <p className="mt-3 text-sm text-muted">Takes about two minutes. No account needed.</p>
       </main>
-      <footer className="px-6 py-6 text-center text-xs text-muted">
+      <footer className="flex justify-center gap-4 px-6 py-6 text-xs text-muted">
         <Link href="/login" className="hover:text-foreground">Reviewer sign in</Link>
+        <Link href="/privacy" className="hover:text-foreground">Privacy</Link>
+        <Link href="/terms" className="hover:text-foreground">Terms</Link>
       </footer>
     </>
   );
