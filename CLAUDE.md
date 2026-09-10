@@ -4,23 +4,34 @@ Owner: Landon Cope (landon@highpsiproducts.com). Product owner: Travis (non-tech
 Claude owns this repo: language, dependencies, architecture, and this file. Keep CLAUDE.md
 current whenever a decision is made or reversed. Dates below are absolute (YYYY-MM-DD).
 
-## Status (2026-09-04)
+## Status (2026-09-10)
 
-MVP scaffolded on branch `scaffold` (PR open), not yet run against a real database.
-Build, lint, and typecheck are clean. Blocked on the Supabase project and keys from
-Landon (see "Account setup"). Once they arrive: `npm run db:push`, run the flows end to
-end (anonymous upload, magic-link login, review, admin), fix what breaks, merge.
+MVP on branch `scaffold` (PR #1). Schema is pushed to the live Supabase project, auth
+(Google + magic link + anonymous) is configured, and `node scripts/dev/e2e-live.mjs`
+passes 19 checks against the live database (upload, RLS isolation, manager review,
+admin seeding). Remaining before merge: Vercel env vars (blocked on Vercel account
+access, see below), a browser pass through the upload flow, then merge and point DNS.
 
 ## Account setup (one-time, needs dashboard access)
 
-1. Supabase (Landon's account): New project `assignedtolabor`, region us-west-2. Save
-   the database password in a password manager. Enable Google and Email (magic link)
-   providers and anonymous sign-ins. Add `https://assignedtolabor.org/auth/callback` and
-   `http://localhost:3000/auth/callback` to Redirect URLs. PENDING.
-2. Vercel: team `travislish-8017s-projects` -> project from GitHub
-   `landoncope/assignedtolabor`. DONE 2026-09-04.
-3. Google Cloud: OAuth client for Google sign-in (Supabase docs give the redirect URL).
-4. Namecheap: point `assignedtolabor.org` at Vercel; add `.com` as a redirect domain.
+1. Supabase DONE 2026-09-10: project `assigbedtolabor` (sic), ref `zyqualxehxopcvkqdjlo`,
+   org `landoncope.dev`, region us-east-1, Free plan. Anonymous sign-ins on, Email +
+   Google providers on, site URL `https://assignedtolabor.org`, redirect URLs for
+   localhost:3000, assignedtolabor.org, and `*.vercel.app`. Migrations pushed via
+   `supabase db push --db-url` (pooler host `aws-0-us-east-1.pooler.supabase.com`,
+   user `postgres.zyqualxehxopcvkqdjlo`; password in Landon's `.env.local`).
+2. Vercel: Travis's team was renamed **`assignedtolabor`** (Pro). Project
+   `assignedtolabor` is connected to GitHub with production from `main` and previews
+   per PR. Landon's Chrome Vercel login (`landoncope`) is on the team; the local Vercel
+   CLI login (`landon-5551`) is NOT. Env vars still PENDING.
+3. Google Cloud DONE 2026-09-10: project `assigned-to-labor-508202`, OAuth consent
+   published to production (External), web client "Supabase Auth" with redirect
+   `https://zyqualxehxopcvkqdjlo.supabase.co/auth/v1/callback`. Branding links to
+   `/privacy` and `/terms` on assignedtolabor.org (pages exist in the app).
+4. Namecheap: point `assignedtolabor.org` at Vercel; add `.com` as a redirect domain. PENDING.
+5. Seed data lives in `supabase/seeds/` (applied by hand with psql, re-runnable).
+   Philippines / Tagalog with Instagram `Liwinag.ni.kristo` and manager invite
+   `holyrebellionph@gmail.com` were seeded 2026-09-10.
 
 ## What this is
 
@@ -140,9 +151,8 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
 
 ## Open questions (Landon is asking Travis)
 
-1. Are the existing Philippines / West Africa / East Africa Instagram accounts Business
-   or Creator accounts linked to a Facebook Page? Needed for API posting in phase 2.
-2. Who manages each existing area (emails), so we can seed `area_managers`?
+1. West Africa / French and East Africa / Swahili: Instagram handles and manager emails
+   (Philippines is done). Travis confirmed the accounts are linked to a Facebook Page.
 
 ## Codebase
 
@@ -166,7 +176,9 @@ src/app/                    / landing, /upload flow, /qr poster, /login, /auth/*
 ```
 
 Commands: `npm run dev`, `npm run build`, `npm run lint`, `npm run typecheck`,
-`npm run db:push` (after `npx supabase link --project-ref <ref>`), `npm run db:types`.
+`npm run db:push` (after `npx supabase link --project-ref <ref>`), `npm run db:types`,
+`node scripts/dev/e2e-live.mjs` (live RLS/flow test against the project in `.env.local`;
+creates and deletes throwaway users, safe to re-run).
 
 ### Data model and rules
 
