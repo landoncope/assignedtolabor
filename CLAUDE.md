@@ -6,29 +6,39 @@ current whenever a decision is made or reversed. Dates below are absolute (YYYY-
 
 ## Status (2026-09-10)
 
-MVP on branch `scaffold` (PR #1). Schema is pushed to the live Supabase project, auth
-(Google + magic link + anonymous) is configured, and `node scripts/dev/e2e-live.mjs`
-passes 19 checks against the live database (upload, RLS isolation, manager review,
-admin seeding). Remaining before merge: Vercel env vars (blocked on Vercel account
-access, see below), a browser pass through the upload flow, then merge and point DNS.
+**MVP is live in production at https://assignedtolabor.org** (PR #1 merged to `main`
+2026-09-10). Verified in the browser on the live stack: anonymous upload end to end,
+Google sign-in, review queue, signed-URL playback, approve, mark-as-posted, admin page.
+`node scripts/dev/e2e-live.mjs` passes 19 checks against the live database. Landon is
+the first admin; Travis becomes admin automatically on first sign-in. The Philippines
+area is seeded. Next: Travis's other two areas, real usage, then phase-2 Instagram API
+posting.
 
 ## Account setup (one-time, needs dashboard access)
 
 1. Supabase DONE 2026-09-10: project `assigbedtolabor` (sic), ref `zyqualxehxopcvkqdjlo`,
    org `landoncope.dev`, region us-east-1, Free plan. Anonymous sign-ins on, Email +
-   Google providers on, site URL `https://assignedtolabor.org`, redirect URLs for
-   localhost:3000, assignedtolabor.org, and `*.vercel.app`. Migrations pushed via
+   Google providers on, site URL `https://assignedtolabor.org`. Redirect allow list
+   uses `/**` globs: `http://localhost:3000/**`, `https://assignedtolabor.org/**`,
+   `https://assignedtolabor.vercel.app/**`,
+   `https://assignedtolabor-*-assignedtolabor.vercel.app/**` (a bare `/auth/callback`
+   entry does NOT match once `?next=` is appended; that bit us once). Migrations pushed via
    `supabase db push --db-url` (pooler host `aws-0-us-east-1.pooler.supabase.com`,
    user `postgres.zyqualxehxopcvkqdjlo`; password in Landon's `.env.local`).
-2. Vercel: Travis's team was renamed **`assignedtolabor`** (Pro). Project
-   `assignedtolabor` is connected to GitHub with production from `main` and previews
-   per PR. Landon's Chrome Vercel login (`landoncope`) is on the team; the local Vercel
-   CLI login (`landon-5551`) is NOT. Env vars still PENDING.
+2. Vercel DONE 2026-09-10: Travis's team was renamed **`assignedtolabor`** (Pro).
+   Project `assignedtolabor` is connected to GitHub with production from `main` and
+   previews per PR. Env vars set for Production + Preview (the five in `.env.example`).
+   Domains: `assignedtolabor.org` = production; `www.assignedtolabor.org`,
+   `assignedtolabor.com`, `www.assignedtolabor.com` = 308 redirect to the .org apex.
+   Landon's Chrome Vercel login (`landoncope`) is on the team; the local Vercel CLI
+   login (`landon-5551`) is NOT, so Vercel changes go through the dashboard.
 3. Google Cloud DONE 2026-09-10: project `assigned-to-labor-508202`, OAuth consent
    published to production (External), web client "Supabase Auth" with redirect
    `https://zyqualxehxopcvkqdjlo.supabase.co/auth/v1/callback`. Branding links to
    `/privacy` and `/terms` on assignedtolabor.org (pages exist in the app).
-4. Namecheap: point `assignedtolabor.org` at Vercel; add `.com` as a redirect domain. PENDING.
+4. Namecheap DONE 2026-09-10 (Namecheap BasicDNS, both domains): `A @ 216.150.1.1`
+   and `CNAME www 8a4deef4ce3f28c8.vercel-dns-016.com`. The default parking records
+   were removed. Namecheap's locked SPF TXT record remains (harmless).
 5. Seed data lives in `supabase/seeds/` (applied by hand with psql, re-runnable).
    Philippines / Tagalog with Instagram `Liwinag.ni.kristo` and manager invite
    `holyrebellionph@gmail.com` were seeded 2026-09-10.
@@ -178,7 +188,9 @@ src/app/                    / landing, /upload flow, /qr poster, /login, /auth/*
 Commands: `npm run dev`, `npm run build`, `npm run lint`, `npm run typecheck`,
 `npm run db:push` (after `npx supabase link --project-ref <ref>`), `npm run db:types`,
 `node scripts/dev/e2e-live.mjs` (live RLS/flow test against the project in `.env.local`;
-creates and deletes throwaway users, safe to re-run).
+creates and deletes throwaway users, safe to re-run). `scripts/dev/session-cookie.mjs`
+mints a throwaway admin session cookie; note the Chrome automation permission layer
+refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
 
 ### Data model and rules
 
@@ -197,6 +209,8 @@ creates and deletes throwaway users, safe to re-run).
   1-hour signed URL from `/api/videos/[id]/playback-url` using the caller's session.
   `/api/cron/purge` (daily, `CRON_SECRET` bearer) deletes files 7 days after posted or
   rejected and sets `file_purged_at`.
+- `src/proxy.ts` forwards a stray `/?code=` (Supabase site-URL fallback) to
+  `/auth/callback` so sign-in still completes if the allow list ever misses.
 - Anonymous upload: `signInAnonymously()` on submit; "Keep me posted" calls
   `updateUser({email})`, which turns the same user into a real account after they
   confirm. Anonymous sessions are redirected away from /review and /admin but may see /my.
