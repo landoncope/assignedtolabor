@@ -21,8 +21,18 @@ export async function proxy(request: NextRequest) {
     },
   );
 
-  const { data: { user } } = await supabase.auth.getUser();
   const { pathname } = request.nextUrl;
+
+  // Safety net: if Supabase ever falls back to the site URL, the auth code lands on
+  // "/" instead of the callback route. Forward it so sign-in still completes.
+  if (pathname === "/" && request.nextUrl.searchParams.has("code")) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/auth/callback";
+    if (!url.searchParams.has("next")) url.searchParams.set("next", "/my");
+    return NextResponse.redirect(url);
+  }
+
+  const { data: { user } } = await supabase.auth.getUser();
   const gated = GATED.some((p) => pathname === p || pathname.startsWith(p + "/"));
   if (gated && (!user || (user.is_anonymous && pathname !== "/my"))) {
     const url = request.nextUrl.clone();
