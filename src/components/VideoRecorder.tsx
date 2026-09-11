@@ -6,12 +6,16 @@ import { RECORDING_TIPS } from "@/lib/script";
 
 type Clip = { id: number; blob: Blob; thumb: string; secs: number };
 
-// Portrait, selfie camera. Phones deliver portrait frames when held upright; the
-// aspect hint nudges browsers that would otherwise pick a landscape mode.
+// Selfie camera. Ask for LANDSCAPE numbers on purpose: iOS Safari fits width/height in
+// sensor coordinates, so 1920x1080 matches a real preset and, with the phone upright,
+// the element reports the full tall frame as 1080x1920. Asking for 1080x1920 instead
+// makes WebKit pick the 4K mode and crop a thin slice out of the sideways frame, which
+// arrives as a wide band with a third of the vertical view (researched 2026-09-11).
 const CAMERA: MediaStreamConstraints = {
-  video: { facingMode: "user", width: { ideal: 1080 }, height: { ideal: 1920 }, aspectRatio: { ideal: 9 / 16 } },
+  video: { facingMode: "user", width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
   audio: true,
 };
+const VIDEO_BITRATE = 8_000_000;
 
 export type Capture = { file: File; thumbnail: string; durationSeconds: number };
 
@@ -53,10 +57,16 @@ export default function VideoRecorder({
   const [tips, setTips] = useState<"off" | "show" | "fade">("off");
   const [merging, setMerging] = useState(false);
   const [showScript, setShowScript] = useState(true);
+  const [captureInfo, setCaptureInfo] = useState("");
   clipsRef.current = clips;
 
   function stopDrawing() {
-    if (drawRafRef.current !== null) { cancelAnimationFrame(drawRafRef.current); drawRafRef.current = null; }
+    if (drawRafRef.current !== null) {
+      const v = videoRef.current as (HTMLVideoElement & { cancelVideoFrameCallback?: (h: number) => void }) | null;
+      if (v && "cancelVideoFrameCallback" in v && v.cancelVideoFrameCallback) v.cancelVideoFrameCallback(drawRafRef.current);
+      cancelAnimationFrame(drawRafRef.current);
+      drawRafRef.current = null;
+    }
     canvasStreamRef.current?.getTracks().forEach((t) => t.stop());
     canvasStreamRef.current = null;
   }
@@ -142,14 +152,18 @@ export default function VideoRecorder({
     let cropW = sw, cropH = sh;
     if (sw / sh > aspect) cropW = Math.round(sh * aspect); else cropH = Math.round(sw / aspect);
     const sx = Math.round((sw - cropW) / 2), sy = Math.round((sh - cropH) / 2);
-    const cw = cropW >= 1080 ? 1080 : cropW >= 720 ? 720 : 540;
-    const ch = cw * 16 / 9;
+    // Native crop size up to 1080 wide, even dimensions for the H.264 encoder.
+    const cw = Math.min(1080, cropW) & ~1;
+    const ch = Math.round(cw * 16 / 9) & ~1;
     canvas.width = cw; canvas.height = ch;
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
+    setCaptureInfo(`Camera ${sw}×${sh} · recording ${cw}×${ch}`);
+    // Draw on each new camera frame where supported, else every animation frame.
+    const rvfc = "requestVideoFrameCallback" in v ? (v as HTMLVideoElement & { requestVideoFrameCallback: (cb: () => void) => number }) : null;
     const draw = () => {
       ctx.drawImage(v, sx, sy, cropW, cropH, 0, 0, cw, ch);
-      drawRafRef.current = requestAnimationFrame(draw);
+      drawRafRef.current = rvfc ? rvfc.requestVideoFrameCallback(draw) : requestAnimationFrame(draw);
     };
     draw();
     const canvasStream = canvas.captureStream(30);
@@ -165,7 +179,7 @@ export default function VideoRecorder({
     mimeRef.current = mime;
     const source = startPortraitCapture() ?? streamRef.current;
     let rec: MediaRecorder;
-    try { rec = new MediaRecorder(source, mime ? { mimeType: mime } : undefined); }
+    try { rec = new MediaRecorder(source, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: VIDEO_BITRATE }); }
     catch { stopDrawing(); setError("Recording isn't supported in this browser. Try uploading a file instead."); return; }
     rec.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
     rec.onstop = () => {
@@ -283,6 +297,7 @@ export default function VideoRecorder({
       </div>
 
       {error && <p className="text-center text-sm text-red-400">{error}</p>}
+      {captureInfo && <p className="text-center text-[11px] text-neutral-500">{captureInfo}</p>}
       {clips.length > 0 && !recording && !merging && (
         <p className="text-center text-xs text-neutral-400">
           {clips.length} clip{clips.length > 1 ? "s" : ""} · tap × on a clip to delete it, or the red button to add another

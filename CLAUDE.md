@@ -219,11 +219,17 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
     VP9-in-MP4, which the stream-copy concat cannot stitch. `mergeClips()` falls back to
     a libx264/aac re-encode if the copy fails.
   - Rotation tags are TRUE (a 2026-09-11 "fix" that stripped them made video sideways
-    and was reverted). Landon's upright iPhone still produced a WIDE recording: iOS
-    hands MediaRecorder the sensor's landscape frame. Since 2026-09-11 the recorder
-    therefore records a 9:16 canvas that mirrors the preview's centre crop
-    (`startPortraitCapture` in `VideoRecorder.tsx`), so output is portrait pixels with
-    no rotation metadata on every device. Diagnose files with
+    and was reverted). Research (WebKit source, 2026-09-11): iOS never delivers portrait
+    pixels; frames are sensor-oriented with a rotation tag that `<video>`, `drawImage`,
+    `videoWidth/Height` and `getSettings()` all honor. Constraints are fitted in SENSOR
+    coordinates, so asking for 1080x1920 selects the 4K mode and Trim-crops a sideways
+    slice: a wide band with ~32% of the vertical view. Ask for `width 1920, height 1080`
+    and the upright phone reports the full frame as 1080x1920. `MediaRecorder` on iOS
+    writes the sensor buffer plus a rotation matrix (from the first frame only).
+  - The recorder therefore draws each frame into a 9:16 canvas (`startPortraitCapture`
+    in `VideoRecorder.tsx`, rVFC-driven, 8 Mbps) and records that: portrait pixels, no
+    rotation metadata, on every device. A small "Camera WxH · recording WxH" readout
+    under the preview exists for field diagnosis. Diagnose files with
     `node scripts/dev/mp4-orientation-check.mjs f.mp4` and by extracting frames with
     and without `-noautorotate`.
   - Full-flow test with a fake camera (exercises the portrait crop, merge, and upload
