@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { baseMimeType, extensionFor, pickRecorderMimeType } from "@/lib/merge-clips";
-import { normalizeOrientation } from "@/lib/mp4-orientation";
 import { RECORDING_TIPS } from "@/lib/script";
 
 type Clip = { id: number; blob: Blob; thumb: string; secs: number };
@@ -158,16 +157,14 @@ export default function VideoRecorder({
     const thumbnail = clips[0].thumb;
     if (clips.length === 1) {
       const type = clips[0].blob.type || "video/webm";
-      const { file } = await normalizeOrientation(new File([clips[0].blob], `recording-${Date.now()}.${extensionFor(type)}`, { type }));
       teardown();
-      onCapture({ file, thumbnail, durationSeconds: total });
+      onCapture({ file: new File([clips[0].blob], `recording-${Date.now()}.${extensionFor(type)}`, { type }), thumbnail, durationSeconds: total });
       return;
     }
     setMerging(true); setError("");
     try {
       const { mergeClips } = await import("@/lib/merge-clips");
-      const merged = await mergeClips(clips.map((c) => c.blob));
-      const { file } = await normalizeOrientation(merged);
+      const file = await mergeClips(clips.map((c) => c.blob));
       teardown();
       onCapture({ file, thumbnail, durationSeconds: total });
     } catch {

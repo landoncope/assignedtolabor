@@ -1,11 +1,9 @@
-// Fixes a phone recorder quirk: iOS Safari's MediaRecorder writes portrait pixels
-// (e.g. 1080x1920) AND a 90-degree rotation matrix in the MP4 track header, so every
-// player shows the video sideways. When the coded frame is already portrait, a
-// quarter-turn rotation can only be wrong, so we replace the matrix with identity and
-// set the track's display size to the coded size. Pure byte patching, no re-encode.
-// Anything we do not recognise is returned unchanged.
-
-const IDENTITY = [0x00010000, 0, 0, 0, 0x00010000, 0, 0, 0, 0x40000000];
+// Reads the coded size and rotation tag of an MP4's video track (diagnostics only).
+//
+// History: an earlier version "fixed" files whose coded frame was portrait but tagged
+// with a quarter-turn rotation, assuming the tag was bogus. It was not: iOS Safari
+// stores the sensor frame rotated into a portrait buffer and tags it, and honoring the
+// tag is what makes the video play upright. Never strip rotation metadata.
 
 type Box = { type: string; start: number; end: number; payload: number };
 
@@ -30,10 +28,10 @@ function find(view: DataView, start: number, end: number, type: string): Box | n
   return null;
 }
 
-export type Orientation = { codedWidth: number; codedHeight: number; rotation: number; patched: boolean };
+export type Orientation = { codedWidth: number; codedHeight: number; rotation: number };
 
-/** Reads the video track's coded size and rotation, and patches a bogus rotation in place. */
-export function normalizeMp4Orientation(buf: ArrayBuffer): Orientation | null {
+/** Reads the video track's coded size and rotation without modifying anything. */
+export function readMp4Orientation(buf: ArrayBuffer): Orientation | null {
   const view = new DataView(buf);
   const moov = find(view, 0, buf.byteLength, "moov");
   if (!moov) return null;
@@ -66,29 +64,7 @@ export function normalizeMp4Orientation(buf: ArrayBuffer): Orientation | null {
     if (a === 0 && d === 0 && b !== 0 && c !== 0) rotation = b > 0 ? 90 : -90;
     else if (a < 0 && d < 0) rotation = 180;
 
-    let patched = false;
-    if (codedHeight > codedWidth && (rotation === 90 || rotation === -90)) {
-      IDENTITY.forEach((v, i) => view.setInt32(matrixAt + i * 4, v));
-      view.setUint32(matrixAt + 36, codedWidth << 16);
-      view.setUint32(matrixAt + 40, codedHeight << 16);
-      patched = true;
-      rotation = 0;
-    }
-    return { codedWidth, codedHeight, rotation, patched };
+    return { codedWidth, codedHeight, rotation };
   }
   return null;
-}
-
-/** Returns the same File, or a patched copy when a bogus rotation was found. */
-export async function normalizeOrientation(file: File): Promise<{ file: File; info: Orientation | null }> {
-  const t = (file.type || "").split(";")[0];
-  if (t !== "video/mp4" && t !== "video/quicktime") return { file, info: null };
-  try {
-    const buf = await file.arrayBuffer();
-    const info = normalizeMp4Orientation(buf);
-    if (!info?.patched) return { file, info };
-    return { file: new File([buf], file.name, { type: file.type }), info };
-  } catch {
-    return { file, info: null };
-  }
 }
