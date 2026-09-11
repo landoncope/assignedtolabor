@@ -218,6 +218,12 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
   - `pickRecorderMimeType()` asks for H.264 + AAC first. Bare `video/mp4` on Chrome means
     VP9-in-MP4, which the stream-copy concat cannot stitch. `mergeClips()` falls back to
     a libx264/aac re-encode if the copy fails.
+  - iOS Safari writes portrait pixels (1080x1920) plus a 90-degree rotation matrix, so
+    players show the video sideways. `src/lib/mp4-orientation.ts` patches the track
+    header in the browser (identity matrix) whenever the coded frame is already
+    portrait and a quarter-turn is tagged; landscape-coded + rotated files (normal
+    camera-app output) are left alone. Applied to single clips, merged output, and
+    picked files. Check a file with `node scripts/dev/mp4-orientation-check.mjs f.mp4`.
   - Self test: `ENABLE_DEV_PAGES=1 npx next build && ENABLE_DEV_PAGES=1 npx next start -p 3001`
     then `node scripts/dev/headless-merge-test.mjs http://127.0.0.1:3001/dev/merge`
     (records two synthetic clips in this Mac's Chrome via playwright-core, merges,

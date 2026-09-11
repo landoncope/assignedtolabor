@@ -6,6 +6,7 @@ import VideoRecorder, { type Capture } from "@/components/VideoRecorder";
 import { CONSENT, CTAS, HOOKS, TEMPLATES, fillTemplate } from "@/lib/script";
 import { createClient } from "@/lib/supabase/client";
 import { areaLabel, type Area, type Script } from "@/lib/types";
+import { normalizeOrientation } from "@/lib/mp4-orientation";
 import { uploadVideo } from "@/lib/upload-video";
 
 type Step = "welcome" | "consent" | "hook" | "body" | "cta" | "area" | "record" | "review" | "done";
@@ -59,12 +60,13 @@ export default function UploadFlow({ areas }: { areas: Area[] }) {
     setCapture(c);
     setPreviewUrl(c ? URL.createObjectURL(c.file) : null);
   }
-  function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     e.target.value = "";
     if (!f) return;
     if (!f.type.startsWith("video/")) { setError("Please choose a video file."); return; }
-    setCapturePreview({ file: f, thumbnail: "", durationSeconds: 0 });
+    const { file } = await normalizeOrientation(f);
+    setCapturePreview({ file, thumbnail: "", durationSeconds: 0 });
     go("review");
   }
 
