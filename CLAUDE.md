@@ -16,7 +16,7 @@ posting.
 
 ## Account setup (one-time, needs dashboard access)
 
-1. Supabase DONE 2026-09-10: project `assigbedtolabor` (sic), ref `zyqualxehxopcvkqdjlo`,
+1. Supabase DONE 2026-09-10: project `assignedtolabor` (renamed from a typo 2026-09-11), ref `zyqualxehxopcvkqdjlo`,
    org `landoncope.dev`, region us-east-1, Free plan. Anonymous sign-ins on, Email +
    Google providers on, site URL `https://assignedtolabor.org`. Redirect allow list
    uses `/**` globs: `http://localhost:3000/**`, `https://assignedtolabor.org/**`,
