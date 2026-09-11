@@ -11,11 +11,19 @@ type Clip = { id: number; blob: Blob; thumb: string; secs: number };
 // the element reports the full tall frame as 1080x1920. Asking for 1080x1920 instead
 // makes WebKit pick the 4K mode and crop a thin slice out of the sideways frame, which
 // arrives as a wide band with a third of the vertical view (researched 2026-09-11).
+// 3840x2160 (landscape numbers, see above) selects the 4K sensor mode where one exists,
+// so the digital zoom below still has real pixels to work with; phones and webcams
+// without 4K fall back to their largest mode.
 const CAMERA: MediaStreamConstraints = {
-  video: { facingMode: "user", width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
+  video: { facingMode: "user", width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 30 } },
   audio: true,
 };
 const VIDEO_BITRATE = 8_000_000;
+// The browser gets the front camera's full wide field of view, which reads as "0.5x"
+// next to the Camera app's cropped selfie framing. Default to a 1.5x crop; the user
+// can change it. Applied identically to the preview and to the recorded canvas.
+const ZOOM_LEVELS = [1, 1.5, 2] as const;
+const DEFAULT_ZOOM = 1.5;
 
 export type Capture = { file: File; thumbnail: string; durationSeconds: number };
 
@@ -58,6 +66,9 @@ export default function VideoRecorder({
   const [merging, setMerging] = useState(false);
   const [showScript, setShowScript] = useState(true);
   const [captureInfo, setCaptureInfo] = useState("");
+  const [zoom, setZoom] = useState<number>(DEFAULT_ZOOM);
+  const zoomRef = useRef<number>(DEFAULT_ZOOM);
+  zoomRef.current = zoom;
   clipsRef.current = clips;
 
   function stopDrawing() {
@@ -160,9 +171,12 @@ export default function VideoRecorder({
     if (!ctx) return null;
     setCaptureInfo(`Camera ${sw}×${sh} · recording ${cw}×${ch}`);
     // Draw on each new camera frame where supported, else every animation frame.
+    // The zoom is read per frame so the control works mid-clip.
     const rvfc = "requestVideoFrameCallback" in v ? (v as HTMLVideoElement & { requestVideoFrameCallback: (cb: () => void) => number }) : null;
     const draw = () => {
-      ctx.drawImage(v, sx, sy, cropW, cropH, 0, 0, cw, ch);
+      const z = zoomRef.current;
+      const zw = cropW / z, zh = cropH / z;
+      ctx.drawImage(v, sx + (cropW - zw) / 2, sy + (cropH - zh) / 2, zw, zh, 0, 0, cw, ch);
       drawRafRef.current = rvfc ? rvfc.requestVideoFrameCallback(draw) : requestAnimationFrame(draw);
     };
     draw();
@@ -237,7 +251,7 @@ export default function VideoRecorder({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="relative mx-auto flex aspect-[9/16] h-[min(66dvh,170vw)] max-w-full items-center justify-center overflow-hidden rounded-2xl bg-black">
-        <video ref={videoRef} autoPlay muted playsInline className={`h-full w-full object-cover ${cam === "error" ? "hidden" : ""}`} style={{ transform: "scaleX(-1)" }} />
+        <video ref={videoRef} autoPlay muted playsInline className={`h-full w-full object-cover ${cam === "error" ? "hidden" : ""}`} style={{ transform: `scaleX(-1) scale(${zoom})`, transformOrigin: "center" }} />
         {cam === "error" && (
           <div className="p-4 text-center text-sm leading-relaxed text-neutral-400">
             Camera unavailable.<br />Allow camera access, or upload a file instead.
@@ -269,6 +283,13 @@ export default function VideoRecorder({
           <button onClick={tapRecord} aria-label={recording ? "Stop clip" : "Record clip"} className="absolute bottom-4 left-1/2 flex h-[70px] w-[70px] -translate-x-1/2 items-center justify-center rounded-full border-4 border-white/90">
             <span className="bg-red-500 transition-all" style={{ borderRadius: recording ? 7 : "50%", width: recording ? 26 : 54, height: recording ? 26 : 54 }} />
           </button>
+        )}
+        {cam !== "error" && !merging && (
+          <div className="absolute right-3 bottom-16 flex overflow-hidden rounded-full bg-black/60 text-xs font-semibold text-white" role="group" aria-label="Zoom">
+            {ZOOM_LEVELS.map((z) => (
+              <button key={z} onClick={() => setZoom(z)} aria-pressed={zoom === z} className={`px-2.5 py-1.5 ${zoom === z ? "bg-white/25" : ""}`}>{z}×</button>
+            ))}
+          </div>
         )}
         {teleprompter && cam !== "error" && (
           <button onClick={() => setShowScript((s) => !s)} className="absolute right-3 bottom-4 rounded-full bg-black/60 px-3 py-1.5 text-xs font-semibold text-white">
