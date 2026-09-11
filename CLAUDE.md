@@ -108,8 +108,12 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
   DO-managed domains). Vercel is acceptable if Supabase stays.
 - Sibling Next.js project for conventions: `../landoncope.dev` (Next.js + Drizzle + pg +
   Tailwind v4, migrations run at container start via `scripts/migrate.mjs`).
-- GitHub: `landoncope/assignedtolabor`, `gh` authenticated. Work on branches, PRs
-  into `main`; `main` deploys to production.
+- GitHub: `landoncope/assignedtolabor`, `gh` authenticated. `main` deploys to
+  production; Landon has said merges need no sign-off, so small fixes go straight to
+  `main` and larger work goes through a PR.
+- Claude in Chrome: the registry can show the Mac Mini's browser (it runs the
+  drafted-advertising Rails app on :3000). Verify with `http://127.0.0.1:3000` before
+  trusting a tab; only this MacBook's Chrome reaches this machine's dev server.
 - `psql` 17 available locally. No Docker.
 - Commits end with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
 
@@ -205,6 +209,22 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
 - Authorization lives in RLS (`is_admin()`, `can_manage_area()`), not in app code.
   Server actions in `src/app/review/actions.ts` and `src/app/admin/actions.ts` only shape
   the write. The `guard_video_update` trigger stops uploaders changing status.
+- Recorder pipeline (learned the hard way on 2026-09-11 from Landon's iPhone test):
+  - The bucket allow-list rejects content types with parameters. MediaRecorder reports
+    e.g. `video/mp4;codecs=avc1,mp4a`, so `upload-video.ts` sends `baseMimeType()`.
+  - `@ffmpeg/ffmpeg` always starts its worker as an ES module, which can only import the
+    ESM core. `scripts/copy-ffmpeg.mjs` ships the ESM core + the library's ESM worker
+    into `public/ffmpeg/`, loaded by plain same-origin URLs (no blob URLs).
+  - `pickRecorderMimeType()` asks for H.264 + AAC first. Bare `video/mp4` on Chrome means
+    VP9-in-MP4, which the stream-copy concat cannot stitch. `mergeClips()` falls back to
+    a libx264/aac re-encode if the copy fails.
+  - Self test: `ENABLE_DEV_PAGES=1 npx next build && ENABLE_DEV_PAGES=1 npx next start -p 3001`
+    then `node scripts/dev/headless-merge-test.mjs http://127.0.0.1:3001/dev/merge`
+    (records two synthetic clips in this Mac's Chrome via playwright-core, merges,
+    uploads as `uploader_name = dev-merge-test`; delete those rows afterwards). The
+    `/dev/merge` page 404s unless `ENABLE_DEV_PAGES=1`, which Vercel never sets. Do not
+    run it against `next dev`: the HMR socket fails under the tool sandbox and reloads
+    the page mid-test.
 - Files: private `videos` bucket at `{user_id}/{ts}.{ext}`, 500 MB cap. Playback is a
   1-hour signed URL from `/api/videos/[id]/playback-url` using the caller's session.
   `/api/cron/purge` (daily, `CRON_SECRET` bearer) deletes files 7 days after posted or
@@ -223,3 +243,13 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
 - Do not put secrets in the repo; only env var names. Template goes in `.env.example`.
 - Every schema change ships as a migration file in the repo, never a dashboard paste.
 - Nothing deploys straight to production from a laptop; deploys come from `main`.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

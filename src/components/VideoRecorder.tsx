@@ -1,10 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { extensionFor } from "@/lib/merge-clips";
+import { baseMimeType, extensionFor, pickRecorderMimeType } from "@/lib/merge-clips";
 import { RECORDING_TIPS } from "@/lib/script";
 
 type Clip = { id: number; blob: Blob; thumb: string; secs: number };
+
+// Portrait, selfie camera. Phones deliver portrait frames when held upright; the
+// aspect hint nudges browsers that would otherwise pick a landscape mode.
+const CAMERA: MediaStreamConstraints = {
+  video: { facingMode: "user", width: { ideal: 1080 }, height: { ideal: 1920 }, aspectRatio: { ideal: 9 / 16 } },
+  audio: true,
+};
 
 export type Capture = { file: File; thumbnail: string; durationSeconds: number };
 
@@ -63,7 +70,7 @@ export default function VideoRecorder({
     teardown();
     setCam("idle");
     try {
-      attach(await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1080 }, height: { ideal: 1920 } }, audio: true }));
+      attach(await navigator.mediaDevices.getUserMedia(CAMERA));
     } catch { setCam("error"); }
   }
 
@@ -71,7 +78,7 @@ export default function VideoRecorder({
     let cancelled = false;
     (async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1080 }, height: { ideal: 1920 } }, audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia(CAMERA);
         if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
         attach(stream);
       } catch { if (!cancelled) setCam("error"); }
@@ -96,11 +103,6 @@ export default function VideoRecorder({
     introTimerRef.current = setTimeout(() => { setTips("fade"); runCountdown(3); }, 2200);
   }
 
-  function pickMime() {
-    const types = ["video/mp4", "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"];
-    for (const t of types) if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(t)) return t;
-    return "";
-  }
   function captureThumb(width = 240): string {
     const v = videoRef.current;
     if (!v || !v.videoWidth) return "";
@@ -117,14 +119,14 @@ export default function VideoRecorder({
     setError(""); chunksRef.current = []; setSecs(0);
     clipThumbRef.current = captureThumb();
     clipStartRef.current = Date.now();
-    const mime = pickMime();
+    const mime = pickRecorderMimeType();
     mimeRef.current = mime;
     let rec: MediaRecorder;
     try { rec = new MediaRecorder(streamRef.current, mime ? { mimeType: mime } : undefined); }
     catch { setError("Recording isn't supported in this browser. Try uploading a file instead."); return; }
     rec.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
     rec.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: rec.mimeType || mimeRef.current || "video/webm" });
+      const blob = new Blob(chunksRef.current, { type: baseMimeType(rec.mimeType || mimeRef.current) || "video/webm" });
       const dur = Math.max(1, Math.round((Date.now() - clipStartRef.current) / 1000));
       if (blob.size > 0) setClips((cs) => [...cs, { id: ++clipIdRef.current, blob, thumb: clipThumbRef.current, secs: dur }]);
       setCam("live");
@@ -176,7 +178,7 @@ export default function VideoRecorder({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <div className="relative flex min-h-[320px] flex-1 items-center justify-center overflow-hidden rounded-2xl bg-black">
+      <div className="relative mx-auto flex aspect-[9/16] h-[min(66dvh,170vw)] max-w-full items-center justify-center overflow-hidden rounded-2xl bg-black">
         <video ref={videoRef} autoPlay muted playsInline className={`h-full w-full object-cover ${cam === "error" ? "hidden" : ""}`} style={{ transform: "scaleX(-1)" }} />
         {cam === "error" && (
           <div className="p-4 text-center text-sm leading-relaxed text-neutral-400">

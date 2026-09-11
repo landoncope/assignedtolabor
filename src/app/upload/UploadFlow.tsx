@@ -40,6 +40,7 @@ export default function UploadFlow({ areas }: { areas: Area[] }) {
   const [email, setEmail] = useState("");
   const [emailState, setEmailState] = useState<"idle" | "busy" | "sent" | "error">("idle");
   const [emailError, setEmailError] = useState("");
+  const [dims, setDims] = useState<{ w: number; h: number; d: number } | null>(null);
 
   const tpl = TEMPLATES.find((t) => t.key === tplKey) ?? null;
   const script: Script = {
@@ -54,6 +55,7 @@ export default function UploadFlow({ areas }: { areas: Area[] }) {
 
   function setCapturePreview(c: Capture | null) {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setDims(null);
     setCapture(c);
     setPreviewUrl(c ? URL.createObjectURL(c.file) : null);
   }
@@ -207,7 +209,25 @@ export default function UploadFlow({ areas }: { areas: Area[] }) {
         <div className="flex flex-1 flex-col">
           <h2 className="text-2xl font-bold">Looks good?</h2>
           <p className="mt-1 text-sm text-neutral-400">Watch it back, then send it in.</p>
-          {previewUrl && <video src={previewUrl} controls playsInline className="mt-4 max-h-[52vh] w-full rounded-2xl bg-black" />}
+          {previewUrl && (
+            <video
+              src={previewUrl}
+              controls
+              playsInline
+              className="mx-auto mt-4 max-h-[52vh] w-full rounded-2xl bg-black"
+              onLoadedMetadata={(e) => {
+                const v = e.currentTarget;
+                const d = Number.isFinite(v.duration) ? v.duration : 0;
+                setDims({ w: v.videoWidth, h: v.videoHeight, d });
+                if (capture && !capture.durationSeconds && d) setCapture({ ...capture, durationSeconds: Math.round(d) });
+              }}
+            />
+          )}
+          {dims && (
+            <p className="mt-2 text-center text-xs text-neutral-500">
+              {dims.w}×{dims.h}{dims.d ? ` · ${Math.round(dims.d)}s` : ""} · {(capture.file.size / 1048576).toFixed(1)} MB · {capture.file.type || "unknown type"}
+            </p>
+          )}
           {uploading && (
             <div className="mt-4">
               <div className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full bg-amber-400 transition-all" style={{ width: `${progress}%` }} /></div>

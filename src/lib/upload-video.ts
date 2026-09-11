@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { baseMimeType } from "@/lib/merge-clips";
 import type { Script } from "@/lib/types";
 
 export const MAX_VIDEO_BYTES = 500 * 1024 * 1024;
@@ -25,10 +26,13 @@ export async function uploadVideo(
   fields: UploadFields,
   onProgress?: (pct: number) => void,
 ): Promise<string> {
-  if (!file.type.startsWith("video/")) throw new Error("Please choose a video file.");
+  const ext = (file.name.split(".").pop() || "webm").toLowerCase();
+  // Recorders report types like "video/mp4;codecs=avc1,mp4a"; the bucket allow-list
+  // only accepts the bare type. Fall back to the extension when the type is missing.
+  const contentType = baseMimeType(file.type) || ({ mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm" } as Record<string, string>)[ext] || "video/mp4";
+  if (!contentType.startsWith("video/")) throw new Error("Please choose a video file.");
   if (file.size > MAX_VIDEO_BYTES) throw new Error("Videos must be under 500 MB.");
 
-  const ext = (file.name.split(".").pop() || "webm").toLowerCase();
   const path = `${userId}/${Date.now()}.${ext}`;
 
   const { data: signed, error: signErr } = await supabase.storage.from("videos").createSignedUploadUrl(path);
@@ -43,7 +47,7 @@ export async function uploadVideo(
     xhr.onerror = () => reject(new Error("Network error during upload."));
     xhr.open("PUT", signed.signedUrl);
     xhr.setRequestHeader("x-upsert", "false");
-    xhr.setRequestHeader("content-type", file.type);
+    xhr.setRequestHeader("content-type", contentType);
     xhr.send(file);
   });
 
@@ -56,7 +60,7 @@ export async function uploadVideo(
         storage_path: path,
         file_name: file.name,
         file_size: file.size,
-        mime_type: file.type,
+        mime_type: contentType,
         duration_seconds: fields.durationSeconds ?? null,
         thumbnail: fields.thumbnail ?? null,
         script: fields.script,
