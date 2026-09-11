@@ -218,12 +218,20 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
   - `pickRecorderMimeType()` asks for H.264 + AAC first. Bare `video/mp4` on Chrome means
     VP9-in-MP4, which the stream-copy concat cannot stitch. `mergeClips()` falls back to
     a libx264/aac re-encode if the copy fails.
-  - Rotation tags are TRUE. Landon's iPhone clip was coded 1080x1920 with a -90 tag;
-    honoring the tag gives an upright (wide) picture, the raw buffer is sideways. A
-    2026-09-11 "fix" that stripped the tag produced sideways video and was reverted.
-    Diagnose with `node scripts/dev/mp4-orientation-check.mjs f.mp4` and by extracting
-    frames with and without `-noautorotate`. Open question: the capture itself was a
-    wide (landscape) field of view; whether the phone was upright is being confirmed.
+  - Rotation tags are TRUE (a 2026-09-11 "fix" that stripped them made video sideways
+    and was reverted). Landon's upright iPhone still produced a WIDE recording: iOS
+    hands MediaRecorder the sensor's landscape frame. Since 2026-09-11 the recorder
+    therefore records a 9:16 canvas that mirrors the preview's centre crop
+    (`startPortraitCapture` in `VideoRecorder.tsx`), so output is portrait pixels with
+    no rotation metadata on every device. Diagnose files with
+    `node scripts/dev/mp4-orientation-check.mjs f.mp4` and by extracting frames with
+    and without `-noautorotate`.
+  - Full-flow test with a fake camera (exercises the portrait crop, merge, and upload
+    through the real UI): build, `npx next start -p 3001`, then
+    `node scripts/dev/headless-upload-flow.mjs http://127.0.0.1:3001 fake-cam.y4m`
+    where the y4m comes from `ffmpeg -f lavfi -i testsrc2=size=640x360:rate=30 -t 3
+    -pix_fmt yuv420p fake-cam.y4m`. It uploads as `uploader_name = headless-flow`;
+    delete that row, file, and anonymous user afterwards.
   - Self test: `ENABLE_DEV_PAGES=1 npx next build && ENABLE_DEV_PAGES=1 npx next start -p 3001`
     then `node scripts/dev/headless-merge-test.mjs http://127.0.0.1:3001/dev/merge`
     (records two synthetic clips in this Mac's Chrome via playwright-core, merges,

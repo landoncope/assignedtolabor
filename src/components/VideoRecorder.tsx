@@ -40,6 +40,9 @@ export default function VideoRecorder({
   const clipIdRef = useRef(0);
   const firstClipRef = useRef(true);
   const introTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const drawRafRef = useRef<number | null>(null);
+  const canvasStreamRef = useRef<MediaStream | null>(null);
   const clipsRef = useRef<Clip[]>([]);
 
   const [cam, setCam] = useState<"idle" | "live" | "recording" | "error">("idle");
@@ -52,8 +55,14 @@ export default function VideoRecorder({
   const [showScript, setShowScript] = useState(true);
   clipsRef.current = clips;
 
+  function stopDrawing() {
+    if (drawRafRef.current !== null) { cancelAnimationFrame(drawRafRef.current); drawRafRef.current = null; }
+    canvasStreamRef.current?.getTracks().forEach((t) => t.stop());
+    canvasStreamRef.current = null;
+  }
   function teardown() {
     if (introTimerRef.current) { clearTimeout(introTimerRef.current); introTimerRef.current = null; }
+    stopDrawing();
     const rec = recorderRef.current;
     if (rec && rec.state !== "inactive") { rec.onstop = null; try { rec.stop(); } catch { /* ignore */ } }
     recorderRef.current = null;
@@ -84,6 +93,7 @@ export default function VideoRecorder({
       } catch { if (!cancelled) setCam("error"); }
     })();
     return () => { cancelled = true; teardown(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/unmount only
   }, []);
 
   useEffect(() => {
@@ -114,6 +124,38 @@ export default function VideoRecorder({
     ctx.drawImage(v, 0, 0, c.width, c.height);
     return c.toDataURL("image/jpeg", 0.6);
   }
+  /**
+   * What gets recorded is a 9:16 portrait canvas showing exactly the centre crop the
+   * preview shows (object-fit: cover). Phones hand us the sensor's wide frame with a
+   * rotation tag, and recording that directly gave landscape video even when the phone
+   * was upright. Drawing through a canvas makes the output portrait on every device,
+   * with no orientation metadata to get wrong. Falls back to the raw stream where
+   * canvas capture is unavailable.
+   */
+  function startPortraitCapture(): MediaStream | null {
+    const v = videoRef.current, cam = streamRef.current;
+    if (!v || !cam || !v.videoWidth || !v.videoHeight) return null;
+    const canvas = canvasRef.current ?? document.createElement("canvas");
+    if (typeof canvas.captureStream !== "function") return null;
+    canvasRef.current = canvas;
+    const sw = v.videoWidth, sh = v.videoHeight, aspect = 9 / 16;
+    let cropW = sw, cropH = sh;
+    if (sw / sh > aspect) cropW = Math.round(sh * aspect); else cropH = Math.round(sw / aspect);
+    const sx = Math.round((sw - cropW) / 2), sy = Math.round((sh - cropH) / 2);
+    const cw = cropW >= 1080 ? 1080 : cropW >= 720 ? 720 : 540;
+    const ch = cw * 16 / 9;
+    canvas.width = cw; canvas.height = ch;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    const draw = () => {
+      ctx.drawImage(v, sx, sy, cropW, cropH, 0, 0, cw, ch);
+      drawRafRef.current = requestAnimationFrame(draw);
+    };
+    draw();
+    const canvasStream = canvas.captureStream(30);
+    canvasStreamRef.current = canvasStream;
+    return new MediaStream([...canvasStream.getVideoTracks(), ...cam.getAudioTracks()]);
+  }
   function beginClip() {
     if (!streamRef.current) return;
     setError(""); chunksRef.current = []; setSecs(0);
@@ -121,11 +163,13 @@ export default function VideoRecorder({
     clipStartRef.current = Date.now();
     const mime = pickRecorderMimeType();
     mimeRef.current = mime;
+    const source = startPortraitCapture() ?? streamRef.current;
     let rec: MediaRecorder;
-    try { rec = new MediaRecorder(streamRef.current, mime ? { mimeType: mime } : undefined); }
-    catch { setError("Recording isn't supported in this browser. Try uploading a file instead."); return; }
+    try { rec = new MediaRecorder(source, mime ? { mimeType: mime } : undefined); }
+    catch { stopDrawing(); setError("Recording isn't supported in this browser. Try uploading a file instead."); return; }
     rec.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
     rec.onstop = () => {
+      stopDrawing();
       const blob = new Blob(chunksRef.current, { type: baseMimeType(rec.mimeType || mimeRef.current) || "video/webm" });
       const dur = Math.max(1, Math.round((Date.now() - clipStartRef.current) / 1000));
       if (blob.size > 0) setClips((cs) => [...cs, { id: ++clipIdRef.current, blob, thumb: clipThumbRef.current, secs: dur }]);
