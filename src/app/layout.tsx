@@ -4,10 +4,14 @@ import "./globals.css";
 
 const geist = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 
+const description = "Share a short video of your faith. Reviewed by a local team and shared with the world.";
+
 export const metadata: Metadata = {
   title: { default: "Assigned To Labor", template: "%s · Assigned To Labor" },
-  description: "Share a short video of your faith. Reviewed by a local team and shared with the world.",
+  description,
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
+  openGraph: { siteName: "Assigned To Labor", title: "Assigned To Labor", description, type: "website", url: "/" },
+  twitter: { card: "summary_large_image" },
 };
 
 export const viewport: Viewport = { themeColor: "#fafaf7", width: "device-width", initialScale: 1, viewportFit: "cover" };

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getViewer } from "@/lib/auth";
+import Mark from "@/components/Mark";
 
 /** Top bar for the signed-in surfaces (my videos, review, admin). */
 export default async function Nav({ current }: { current?: "my" | "review" | "admin" }) {
@@ -16,8 +17,9 @@ export default async function Nav({ current }: { current?: "my" | "review" | "ad
   return (
     <header className="border-b border-line bg-card">
       <div className="mx-auto flex max-w-5xl items-center gap-2 px-4 py-3">
-        <Link href="/" className="mr-auto text-sm font-bold tracking-tight">
-          Assigned <span className="text-gold">To</span> Labor
+        <Link href="/" className="mr-auto flex items-center gap-2 text-sm font-bold tracking-tight">
+          <Mark size={22} />
+          <span>Assigned <span className="text-gold">To</span> Labor</span>
         </Link>
         {signedIn && link("/my", "My videos", "my")}
         {v?.isManager && link("/review", "Review", "review")}

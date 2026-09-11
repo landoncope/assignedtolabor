@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Mark from "@/components/Mark";
 import Nav from "@/components/Nav";
 
 export default function Home() {
@@ -6,6 +7,7 @@ export default function Home() {
     <>
       <Nav />
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center px-6 py-16 text-center">
+        <Mark size={56} className="mb-5" />
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-gold">Assigned To Labor</p>
         <h1 className="mt-3 text-4xl font-bold tracking-tight sm:text-5xl">Share your witness.</h1>
         <p className="mt-4 max-w-md text-lg text-muted">
