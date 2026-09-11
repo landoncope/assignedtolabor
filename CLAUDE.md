@@ -255,6 +255,18 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
   rejected and sets `file_purged_at`.
 - `src/proxy.ts` forwards a stray `/?code=` (Supabase site-URL fallback) to
   `/auth/callback` so sign-in still completes if the allow list ever misses.
+- Email links use token hashes, not PKCE codes, so they work on any device (people
+  upload from a phone and read mail on a laptop). `/auth/confirm?token_hash=&type=&next=`
+  calls `verifyOtp`. The Supabase templates "Magic link or OTP" (type=magiclink),
+  "Confirm sign up" (type=signup) and "Change email address" (type=email_change, the
+  anonymous-to-account upgrade) were rewritten 2026-09-11 with Assigned To Labor
+  wording and point at that route. Edited in the dashboard: subject input id
+  `MAILER_SUBJECTS_*`, body via `window.monaco.editor.getModels()[0].setValue()`.
+- Email sending: Supabase custom SMTP via Resend (host smtp.resend.com:465, user
+  `resend`, password = the Resend API key, sender no-reply@assignedtolabor.org). Resend
+  domain `assignedtolabor.org` (id 131f47db-7fa8-4d4e-8a6f-b507d2901f45, us-east-1) with
+  DKIM/SPF/MX/CNAME records at Namecheap. Until Resend shows the domain verified, every
+  auth email fails ("Error sending magic link email"); Google sign-in is unaffected.
 - Anonymous upload: `signInAnonymously()` on submit; "Keep me posted" calls
   `updateUser({email})`, which turns the same user into a real account after they
   confirm. Anonymous sessions are redirected away from /review and /admin but may see /my.
