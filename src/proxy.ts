@@ -34,6 +34,7 @@ export async function proxy(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser();
   const gated = GATED.some((p) => pathname === p || pathname.startsWith(p + "/"));
+  if (pathname.startsWith("/auth/")) return response;
   if (gated && (!user || (user.is_anonymous && pathname !== "/my"))) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
