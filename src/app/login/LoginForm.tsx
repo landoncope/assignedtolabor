@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Turnstile, { TURNSTILE_SITE_KEY } from "@/components/Turnstile";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginForm({ next }: { next: string }) {
@@ -9,6 +10,7 @@ export default function LoginForm({ next }: { next: string }) {
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
+  const [captcha, setCaptcha] = useState<string | null>(null);
   const callback = () => `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
 
   async function google() {
@@ -20,9 +22,9 @@ export default function LoginForm({ next }: { next: string }) {
   async function magicLink(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true); setError("");
-    const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: callback() } });
+    const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: callback(), captchaToken: captcha ?? undefined } });
     setBusy(false);
-    if (error) setError(error.message); else setSent(true);
+    if (error) { window.turnstile?.reset(); setCaptcha(null); setError(error.message); } else setSent(true);
   }
 
   if (sent) {
@@ -43,7 +45,8 @@ export default function LoginForm({ next }: { next: string }) {
       <div className="flex items-center gap-3 text-xs text-muted"><span className="h-px flex-1 bg-line" />or<span className="h-px flex-1 bg-line" /></div>
       <form onSubmit={magicLink} className="flex flex-col gap-3">
         <input className="input" type="email" required placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
-        <button className="btn-primary py-3" disabled={busy || !email}>Email me a sign-in link</button>
+        <Turnstile onToken={setCaptcha} className="flex justify-center" />
+        <button className="btn-primary py-3" disabled={busy || !email || (!!TURNSTILE_SITE_KEY && !captcha)}>Email me a sign-in link</button>
       </form>
       {error && <p className="text-sm text-danger">{error}</p>}
     </div>

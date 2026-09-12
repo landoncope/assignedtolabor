@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
+import Turnstile, { TURNSTILE_SITE_KEY } from "@/components/Turnstile";
 import VideoRecorder, { type Capture } from "@/components/VideoRecorder";
 import { LANGUAGE_SUGGESTIONS, areaForLanguage, normalizeLanguage } from "@/lib/languages";
 import { CONSENT, CTAS, HOOKS, TEMPLATES, fillTemplate } from "@/lib/script";
@@ -42,6 +43,7 @@ export default function UploadFlow({ areas }: { areas: Area[] }) {
   const [emailState, setEmailState] = useState<"idle" | "busy" | "sent" | "error">("idle");
   const [emailError, setEmailError] = useState("");
   const [dims, setDims] = useState<{ w: number; h: number; d: number } | null>(null);
+  const [captcha, setCaptcha] = useState<string | null>(null);
 
   const tpl = TEMPLATES.find((t) => t.key === tplKey) ?? null;
   const script: Script = {
@@ -75,8 +77,8 @@ export default function UploadFlow({ areas }: { areas: Area[] }) {
     try {
       let { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        const { data, error: anonErr } = await supabase.auth.signInAnonymously();
-        if (anonErr) throw new Error(anonErr.message);
+        const { data, error: anonErr } = await supabase.auth.signInAnonymously({ options: { captchaToken: captcha ?? undefined } });
+        if (anonErr) { window.turnstile?.reset(); setCaptcha(null); throw new Error(anonErr.message); }
         session = data.session;
       }
       if (!session) throw new Error("Could not start a session. Please try again.");
@@ -248,7 +250,8 @@ export default function UploadFlow({ areas }: { areas: Area[] }) {
           )}
           {error && <p className="mt-3 text-center text-sm text-red-400">{error}</p>}
           <div className="mt-auto flex flex-col gap-2 pt-4">
-            <button onClick={submit} disabled={uploading} className="btn-primary py-3.5 text-base">{uploading ? "Sending…" : "Send it in"}</button>
+            <Turnstile theme="dark" onToken={setCaptcha} className="flex justify-center" />
+            <button onClick={submit} disabled={uploading || (!!TURNSTILE_SITE_KEY && !captcha)} className="btn-primary py-3.5 text-base">{uploading ? "Sending…" : "Send it in"}</button>
             <button onClick={() => { setCapturePreview(null); go("language"); }} disabled={uploading} className="btn border border-white/20 py-3 text-white">Re-record</button>
           </div>
         </div>
