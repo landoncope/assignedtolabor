@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import VideoRecorder, { type Capture } from "@/components/VideoRecorder";
+import { LANGUAGE_SUGGESTIONS, areaForLanguage, normalizeLanguage } from "@/lib/languages";
 import { CONSENT, CTAS, HOOKS, TEMPLATES, fillTemplate } from "@/lib/script";
 import { createClient } from "@/lib/supabase/client";
-import { areaLabel, type Area, type Script } from "@/lib/types";
+import { type Area, type Script } from "@/lib/types";
 import { uploadVideo } from "@/lib/upload-video";
 
-type Step = "welcome" | "consent" | "hook" | "body" | "cta" | "area" | "record" | "review" | "done";
-const ORDER: Step[] = ["welcome", "consent", "hook", "body", "cta", "area", "record", "review", "done"];
+type Step = "welcome" | "consent" | "hook" | "body" | "cta" | "language" | "record" | "review" | "done";
+const ORDER: Step[] = ["welcome", "consent", "hook", "body", "cta", "language", "record", "review", "done"];
 
 /**
  * The guided quick-upload flow: consent, a three-step script builder (hook, body,
@@ -30,7 +31,7 @@ export default function UploadFlow({ areas }: { areas: Area[] }) {
   const [bodyCustom, setBodyCustom] = useState("");
   const [cta, setCta] = useState<string | null>(null);
   const [ctaCustom, setCtaCustom] = useState("");
-  const [areaId, setAreaId] = useState<string | null>(null);
+  const [language, setLanguage] = useState("");
   const [name, setName] = useState("");
   const [capture, setCapture] = useState<Capture | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -79,8 +80,10 @@ export default function UploadFlow({ areas }: { areas: Area[] }) {
         session = data.session;
       }
       if (!session) throw new Error("Could not start a session. Please try again.");
+      const lang = normalizeLanguage(language);
       await uploadVideo(supabase, session.user.id, capture.file, {
-        areaId,
+        areaId: areaForLanguage(areas, lang)?.id ?? null,
+        language: lang || null,
         script: teleprompter ? script : null,
         uploaderName: name.trim() || null,
         thumbnail: capture.thumbnail || null,
@@ -175,25 +178,34 @@ export default function UploadFlow({ areas }: { areas: Area[] }) {
       {step === "cta" && (
         <StepShell title="End with an invitation" sub="What should someone do after watching?">
           <Choices options={CTAS} value={cta} onChange={setCta} customValue={ctaCustom} onCustom={setCtaCustom} customLabel="Write my own" />
-          <NextRow onSkip={() => { setCta(null); go("area"); }} onNext={() => go("area")} disabled={cta === "custom" && !ctaCustom.trim()} />
+          <NextRow onSkip={() => { setCta(null); go("language"); }} onNext={() => go("language")} disabled={cta === "custom" && !ctaCustom.trim()} />
         </StepShell>
       )}
 
-      {step === "area" && (
-        <StepShell title="Where should this go?" sub="Pick the team closest to you. They review and share it.">
-          <div className="flex flex-col gap-2">
-            {areas.map((a) => (
-              <button key={a.id} onClick={() => setAreaId(a.id)} className={`rounded-xl border px-4 py-3 text-left text-sm font-semibold ${areaId === a.id ? "border-amber-400 bg-amber-400/10" : "border-white/15"}`}>{areaLabel(a)}</button>
-            ))}
-            <button onClick={() => setAreaId(null)} className={`rounded-xl border px-4 py-3 text-left text-sm font-semibold ${areaId === null ? "border-amber-400 bg-amber-400/10" : "border-white/15"}`}>Not sure</button>
-          </div>
+      {step === "language" && (
+        <StepShell title="What language will you speak?" sub="Your video goes to a team that shares it with people who speak your language, in your part of the world.">
+          <label className="block">
+            <span className="mb-1 block text-xs text-neutral-400">Language</span>
+            <input
+              className="input border-white/15 bg-white/5 text-white"
+              list="language-suggestions"
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+              placeholder="Tagalog, Swahili, Spanish…"
+              autoComplete="off"
+              autoCapitalize="words"
+            />
+            <datalist id="language-suggestions">
+              {[...new Set([...areas.map((a) => a.language), ...LANGUAGE_SUGGESTIONS])].map((l) => <option key={l} value={l} />)}
+            </datalist>
+          </label>
           <label className="mt-5 block">
             <span className="mb-1 block text-xs text-neutral-400">Your first name (optional)</span>
             <input className="input border-white/15 bg-white/5 text-white" value={name} onChange={(e) => setName(e.target.value)} autoComplete="given-name" />
           </label>
           <div className="mt-6 flex flex-col gap-2">
-            <button onClick={() => go("record")} className="btn-primary py-3.5 text-base">Record now</button>
-            <button onClick={() => fileRef.current?.click()} className="btn border border-white/20 py-3 text-white">Upload a video I already have</button>
+            <button onClick={() => go("record")} disabled={normalizeLanguage(language).length < 2} className="btn-primary py-3.5 text-base">Record now</button>
+            <button onClick={() => fileRef.current?.click()} disabled={normalizeLanguage(language).length < 2} className="btn border border-white/20 py-3 text-white">Upload a video I already have</button>
           </div>
           {error && <p className="mt-3 text-center text-sm text-red-400">{error}</p>}
         </StepShell>
@@ -201,7 +213,7 @@ export default function UploadFlow({ areas }: { areas: Area[] }) {
 
       {step === "record" && (
         <div className="flex flex-1 flex-col">
-          <VideoRecorder teleprompter={teleprompter || null} onCapture={(c) => { setCapturePreview(c); go("review"); }} onCancel={() => go("area")} />
+          <VideoRecorder teleprompter={teleprompter || null} onCapture={(c) => { setCapturePreview(c); go("review"); }} onCancel={() => go("language")} />
         </div>
       )}
 
@@ -237,7 +249,7 @@ export default function UploadFlow({ areas }: { areas: Area[] }) {
           {error && <p className="mt-3 text-center text-sm text-red-400">{error}</p>}
           <div className="mt-auto flex flex-col gap-2 pt-4">
             <button onClick={submit} disabled={uploading} className="btn-primary py-3.5 text-base">{uploading ? "Sending…" : "Send it in"}</button>
-            <button onClick={() => { setCapturePreview(null); go("area"); }} disabled={uploading} className="btn border border-white/20 py-3 text-white">Re-record</button>
+            <button onClick={() => { setCapturePreview(null); go("language"); }} disabled={uploading} className="btn border border-white/20 py-3 text-white">Re-record</button>
           </div>
         </div>
       )}

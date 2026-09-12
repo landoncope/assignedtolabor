@@ -6,6 +6,7 @@ export const MAX_VIDEO_BYTES = 500 * 1024 * 1024;
 
 export type UploadFields = {
   areaId: string | null;
+  language?: string | null;
   script: Script | null;
   uploaderName?: string | null;
   uploaderNote?: string | null;
@@ -57,6 +58,7 @@ export async function uploadVideo(
       .insert({
         user_id: userId,
         area_id: fields.areaId,
+        language: fields.language ?? null,
         storage_path: path,
         file_name: file.name,
         file_size: file.size,

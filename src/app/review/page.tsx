@@ -56,7 +56,7 @@ export default async function ReviewPage({ searchParams }: PageProps<"/review">)
                       {!v.area && <span className="rounded bg-gold/15 px-1.5 py-0.5 text-xs text-gold">needs an area</span>}
                     </div>
                     <div className="mt-0.5 text-sm text-muted">
-                      {v.uploader_name ?? "Anonymous"} · {new Date(v.created_at).toLocaleString()}{v.duration_seconds ? ` · ${v.duration_seconds}s` : ""}
+                      {v.uploader_name ?? "Anonymous"}{v.language ? ` · speaks ${v.language}` : ""} · {new Date(v.created_at).toLocaleString()}{v.duration_seconds ? ` · ${v.duration_seconds}s` : ""}
                     </div>
                     {v.script?.body && <p className="mt-2 line-clamp-2 text-sm">{v.script.body}</p>}
                   </div>

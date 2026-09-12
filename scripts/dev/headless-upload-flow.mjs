@@ -22,7 +22,7 @@ await page.getByRole("button", { name: /^Testimony/ }).click();
 await page.getByRole("button", { name: "Next" }).click();
 await page.getByRole("button", { name: /come and see\.$/ }).first().click();
 await page.getByRole("button", { name: "Next" }).click();
-await page.getByRole("button", { name: /Philippines/ }).click();
+await page.locator('label:has-text("Language") input').fill("Tagalog");
 await page.locator('label:has-text("first name") input').fill(name);
 await page.getByRole("button", { name: "Record now" }).click();
 await page.waitForFunction(() => { const v = document.querySelector("video"); return v && v.videoWidth > 0; }, null, { timeout: 20000 });

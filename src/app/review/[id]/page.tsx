@@ -37,7 +37,7 @@ export default async function ReviewVideoPage({ params }: PageProps<"/review/[id
               <div className="text-xs font-semibold uppercase tracking-wide text-muted">{STATUS_LABEL[v.status]}</div>
               <h1 className="mt-1 text-xl font-bold">{areaLabel(v.area)}</h1>
               <p className="text-sm text-muted">
-                From {v.uploader_name ?? "Anonymous"} · {new Date(v.created_at).toLocaleString()}
+                From {v.uploader_name ?? "Anonymous"}{v.language ? ` · speaks ${v.language}` : ""} · {new Date(v.created_at).toLocaleString()}
                 {v.duration_seconds ? ` · ${v.duration_seconds}s` : ""}{v.file_size ? ` · ${(v.file_size / 1048576).toFixed(1)} MB` : ""}
               </p>
             </div>

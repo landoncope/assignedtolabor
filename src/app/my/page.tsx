@@ -39,7 +39,7 @@ export default async function MyVideosPage({ searchParams }: PageProps<"/my">) {
                 <Thumb src={v.thumbnail} />
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-semibold">{STATUS_LABEL[v.status]}</div>
-                  <div className="mt-0.5 text-sm text-muted">{areaLabel(v.area)} · {new Date(v.created_at).toLocaleDateString()}</div>
+                  <div className="mt-0.5 text-sm text-muted">{v.language ? `${v.language} · ` : ""}{areaLabel(v.area)} · {new Date(v.created_at).toLocaleDateString()}</div>
                   {v.script?.body && <p className="mt-2 line-clamp-2 text-sm">{v.script.body}</p>}
                   {v.status === "rejected" && v.rejection_note && <p className="mt-2 text-sm text-muted">Note from the team: {v.rejection_note}</p>}
                   {v.status === "posted" && v.post_url && <a href={v.post_url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm text-accent underline">See the post</a>}

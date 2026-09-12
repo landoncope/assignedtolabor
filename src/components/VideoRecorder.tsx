@@ -258,42 +258,31 @@ export default function VideoRecorder({
           </div>
         )}
         {teleprompter && showScript && cam !== "error" && (
-          <div className="pointer-events-none absolute inset-x-3 top-3 rounded-xl bg-black/55 p-3 text-center text-[15px] font-semibold leading-relaxed text-white backdrop-blur-sm">
+          <div className="pointer-events-none absolute inset-x-3 top-3 rounded-xl bg-black/55 p-3 pr-16 text-center text-[15px] font-semibold leading-relaxed text-white backdrop-blur-sm">
             {teleprompter}
           </div>
         )}
-        {recording && (
-          <div className="absolute left-3 bottom-24 flex items-center gap-1.5 rounded-full bg-black/60 px-2.5 py-1 text-xs font-semibold text-white">
-            <span className="h-2 w-2 rounded-full bg-red-500" />
-            {Math.floor(secs / 60)}:{String(secs % 60).padStart(2, "0")}
+        {teleprompter && cam !== "error" && (
+          <button onClick={() => setShowScript((s) => !s)} className="absolute right-4 top-4 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-semibold text-white">
+            {showScript ? "Hide" : "Show script"}
+          </button>
+        )}
+        {cam !== "error" && !merging && (
+          <div className="absolute right-2 top-1/2 flex -translate-y-1/2 flex-col overflow-hidden rounded-full bg-black/60 text-[11px] font-semibold text-white" role="group" aria-label="Zoom">
+            {ZOOM_LEVELS.map((z) => (
+              <button key={z} onClick={() => setZoom(z)} aria-pressed={zoom === z} className={`px-2 py-1.5 ${zoom === z ? "bg-white/25" : ""}`}>{z}×</button>
+            ))}
           </div>
         )}
-        {clips.length > 0 && (
-          <div className="absolute bottom-3 left-3 flex max-w-[62%] gap-2 overflow-x-auto pt-1 pr-1">
-            {clips.map((c, i) => (
-              <div key={c.id} className="relative h-14 w-10 shrink-0 overflow-hidden rounded-md border border-white/75 bg-neutral-800">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                {c.thumb && <img src={c.thumb} alt={`Clip ${i + 1}`} className="h-full w-full object-cover" />}
-                <button onClick={() => deleteClip(c.id)} aria-label={`Delete clip ${i + 1}`} className="absolute -top-0 -right-0 flex h-5 w-5 items-center justify-center rounded-full bg-black text-xs text-white">×</button>
-              </div>
-            ))}
+        {recording && (
+          <div className="absolute left-3 bottom-6 flex items-center gap-1.5 rounded-full bg-black/60 px-2.5 py-1 text-xs font-semibold text-white">
+            <span className="h-2 w-2 rounded-full bg-red-500" />
+            {Math.floor(secs / 60)}:{String(secs % 60).padStart(2, "0")}
           </div>
         )}
         {cam !== "error" && !merging && (
           <button onClick={tapRecord} aria-label={recording ? "Stop clip" : "Record clip"} className="absolute bottom-4 left-1/2 flex h-[70px] w-[70px] -translate-x-1/2 items-center justify-center rounded-full border-4 border-white/90">
             <span className="bg-red-500 transition-all" style={{ borderRadius: recording ? 7 : "50%", width: recording ? 26 : 54, height: recording ? 26 : 54 }} />
-          </button>
-        )}
-        {cam !== "error" && !merging && (
-          <div className="absolute right-3 bottom-16 flex overflow-hidden rounded-full bg-black/60 text-xs font-semibold text-white" role="group" aria-label="Zoom">
-            {ZOOM_LEVELS.map((z) => (
-              <button key={z} onClick={() => setZoom(z)} aria-pressed={zoom === z} className={`px-2.5 py-1.5 ${zoom === z ? "bg-white/25" : ""}`}>{z}×</button>
-            ))}
-          </div>
-        )}
-        {teleprompter && cam !== "error" && (
-          <button onClick={() => setShowScript((s) => !s)} className="absolute right-3 bottom-4 rounded-full bg-black/60 px-3 py-1.5 text-xs font-semibold text-white">
-            {showScript ? "Hide script" : "Show script"}
           </button>
         )}
         {(countdown !== null || tips !== "off") && (
@@ -317,13 +306,24 @@ export default function VideoRecorder({
         )}
       </div>
 
+      {clips.length > 0 && (
+        <div className="flex items-center gap-2 overflow-x-auto py-1">
+          {clips.map((c, i) => (
+            <div key={c.id} className="relative h-16 w-11 shrink-0 overflow-hidden rounded-md border border-white/40 bg-neutral-800">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {c.thumb && <img src={c.thumb} alt={`Clip ${i + 1}`} className="h-full w-full object-cover" />}
+              <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-center text-[10px] text-white">{c.secs}s</span>
+              <button onClick={() => deleteClip(c.id)} aria-label={`Delete clip ${i + 1}`} className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-bl-md bg-black/80 text-xs text-white">×</button>
+            </div>
+          ))}
+          {!recording && !merging && (
+            <p className="pl-1 text-xs text-neutral-400">{clips.length} clip{clips.length > 1 ? "s" : ""}. Tap × to delete one, or the red button to add another.</p>
+          )}
+        </div>
+      )}
+
       {error && <p className="text-center text-sm text-red-400">{error}</p>}
       {captureInfo && <p className="text-center text-[11px] text-neutral-500">{captureInfo}</p>}
-      {clips.length > 0 && !recording && !merging && (
-        <p className="text-center text-xs text-neutral-400">
-          {clips.length} clip{clips.length > 1 ? "s" : ""} · tap × on a clip to delete it, or the red button to add another
-        </p>
-      )}
       <div className="flex gap-2">
         {clips.length > 0 && <button onClick={startOver} disabled={merging} className="btn border border-neutral-600 text-neutral-300">Start over</button>}
         <button onClick={done} disabled={doneDisabled} className="btn-primary flex-1 py-3">{merging ? "Combining…" : "Done"}</button>
