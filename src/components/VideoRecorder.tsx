@@ -65,7 +65,6 @@ export default function VideoRecorder({
   const [tips, setTips] = useState<"off" | "show" | "fade">("off");
   const [merging, setMerging] = useState(false);
   const [showScript, setShowScript] = useState(true);
-  const [captureInfo, setCaptureInfo] = useState("");
   const [zoom, setZoom] = useState<number>(DEFAULT_ZOOM);
   const zoomRef = useRef<number>(DEFAULT_ZOOM);
   zoomRef.current = zoom;
@@ -169,7 +168,7 @@ export default function VideoRecorder({
     canvas.width = cw; canvas.height = ch;
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
-    setCaptureInfo(`Camera ${sw}×${sh} · recording ${cw}×${ch}`);
+    console.debug(`[recorder] camera ${sw}×${sh} · recording ${cw}×${ch}`);
     // Draw on each new camera frame where supported, else every animation frame.
     // The zoom is read per frame so the control works mid-clip.
     const rvfc = "requestVideoFrameCallback" in v ? (v as HTMLVideoElement & { requestVideoFrameCallback: (cb: () => void) => number }) : null;
@@ -323,7 +322,6 @@ export default function VideoRecorder({
       )}
 
       {error && <p className="text-center text-sm text-red-400">{error}</p>}
-      {captureInfo && <p className="text-center text-[11px] text-neutral-500">{captureInfo}</p>}
       <div className="flex gap-2">
         {clips.length > 0 && <button onClick={startOver} disabled={merging} className="btn border border-neutral-600 text-neutral-300">Start over</button>}
         <button onClick={done} disabled={doneDisabled} className="btn-primary flex-1 py-3">{merging ? "Combining…" : "Done"}</button>

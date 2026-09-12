@@ -245,7 +245,9 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
     digital zoom has pixels to spare: getUserMedia exposes the front camera's full wide
     field (reads as "0.5x" versus the Camera app), so the canvas crops a centre region
     (default 1.5x, user-selectable 1x/1.5x/2x) and the preview applies the same zoom
-    with a CSS scale, keeping it WYSIWYG. A small "Camera WxH · recording WxH" readout
+    with a CSS scale, keeping it WYSIWYG. The capture size is logged to the console
+    (`[recorder] camera WxH · recording WxH`); the on-screen readout was removed
+    2026-09-12 once orientation was settled. A small "Camera WxH · recording WxH" readout
     under the preview exists for field diagnosis. Diagnose files with
     `node scripts/dev/mp4-orientation-check.mjs f.mp4` and by extracting frames with
     and without `-noautorotate`.
