@@ -38,7 +38,7 @@ function loadScript(): Promise<void> {
 export default function Turnstile({ onToken, theme = "auto", className = "" }: { onToken: (token: string | null) => void; theme?: "light" | "dark" | "auto"; className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const onTokenRef = useRef(onToken);
-  onTokenRef.current = onToken;
+  useEffect(() => { onTokenRef.current = onToken; }, [onToken]);
 
   useEffect(() => {
     if (!TURNSTILE_SITE_KEY) return;
