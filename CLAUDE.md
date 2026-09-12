@@ -264,7 +264,7 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
   `MAILER_SUBJECTS_*`, body via `window.monaco.editor.getModels()[0].setValue()`.
 - Email sending: Supabase custom SMTP via Resend (host smtp.resend.com:465, user
   `resend`, password = the Resend API key, sender no-reply@assignedtolabor.org). Resend
-  domain `assignedtolabor.org` (id 131f47db-7fa8-4d4e-8a6f-b507d2901f45, us-east-1) with
+  domain `assignedtolabor.org` (id bd5e0fee-ae29-42c7-8b93-f8bd6dcdbd56, us-east-1) with
   DKIM/SPF/MX/CNAME records at Namecheap. Until Resend shows the domain verified, every
   auth email fails ("Error sending magic link email"); Google sign-in is unaffected.
 - Anonymous upload: `signInAnonymously()` on submit; "Keep me posted" calls
