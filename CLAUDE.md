@@ -4,15 +4,17 @@ Owner: Landon Cope (landon@highpsiproducts.com). Product owner: Travis (non-tech
 Claude owns this repo: language, dependencies, architecture, and this file. Keep CLAUDE.md
 current whenever a decision is made or reversed. Dates below are absolute (YYYY-MM-DD).
 
-## Status (2026-09-10)
+## Status (2026-09-12)
 
-**MVP is live in production at https://assignedtolabor.org** (PR #1 merged to `main`
-2026-09-10). Verified in the browser on the live stack: anonymous upload end to end,
-Google sign-in, review queue, signed-URL playback, approve, mark-as-posted, admin page.
-`node scripts/dev/e2e-live.mjs` passes 19 checks against the live database. Landon is
-the first admin; Travis becomes admin automatically on first sign-in. The Philippines
-area is seeded. Next: Travis's other two areas, real usage, then phase-2 Instagram API
-posting.
+**MVP is live in production at https://assignedtolabor.org.** Landon and Travis are
+admins and are testing. Working and verified: anonymous upload with portrait 9:16
+recording (multi-clip, zoom), language-based routing to areas, review queue, assisted
+Instagram posting workflow, admin (areas, managers), Google and magic-link sign-in,
+cross-device email links, email notifications through Resend (managers, uploaders,
+new reviewers), nightly file purge, branding (wheat-sheaf logo). Travis's first
+feedback round (language step, recorder layout) shipped 2026-09-12. Next: Travis's
+further testing, his other two areas, bot protection (Turnstile) before the QR poster
+goes public, then phase-2 Instagram API posting.
 
 ## Account setup (one-time, needs dashboard access)
 
@@ -32,6 +34,9 @@ posting.
    `assignedtolabor.com`, `www.assignedtolabor.com` = 308 redirect to the .org apex.
    Landon's Chrome Vercel login (`landoncope`) is on the team; the local Vercel CLI
    login (`landon-5551`) is NOT, so Vercel changes go through the dashboard.
+   `SUPABASE_SERVICE_ROLE_KEY` and `CRON_SECRET` are stored as readable "Config"
+   values and Vercel flags them "Needs Attention"; converting to Secret requires
+   typing a new value, which Claude does not do. `RESEND_API_KEY` is a Secret.
 3. Google Cloud DONE 2026-09-10: project `assigned-to-labor-508202`, OAuth consent
    published to production (External), web client "Supabase Auth" with redirect
    `https://zyqualxehxopcvkqdjlo.supabase.co/auth/v1/callback`. Branding links to
@@ -202,8 +207,12 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
   granted automatically to emails in `admin_seed_emails`. Managers are rows in
   `area_managers`; `manager_invites` holds emails that have not signed in yet and is
   applied by the same trigger on first sign-in or on anonymous-to-email upgrade.
-- `areas` = name + language + optional `instagram_handle`. `videos.area_id` null means
-  the admin queue ("Not sure" in the upload flow).
+- `areas` = name + language + optional `instagram_handle`. Since 2026-09-12 (Travis's
+  feedback) uploaders do not pick a team: they type the language they will speak
+  (`videos.language`, free text with suggestions from `src/lib/languages.ts`). The
+  client assigns `area_id` to the single active area with that language
+  (`areaForLanguage`); no match or several matches leaves it null = admin queue, and
+  reviewers assign the area on the review page.
 - `videos.status`: pending -> approved -> posted, or pending/approved -> rejected.
   Reviewers may reopen. `script` is `{hook, body, cta}` and doubles as the caption.
 - Authorization lives in RLS (`is_admin()`, `can_manage_area()`), not in app code.
@@ -226,6 +235,10 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
     slice: a wide band with ~32% of the vertical view. Ask for `width 1920, height 1080`
     and the upright phone reports the full frame as 1080x1920. `MediaRecorder` on iOS
     writes the sensor buffer plus a rotation matrix (from the first frame only).
+  - Recorder layout (2026-09-12, Travis: "congested"): inside the frame only the script
+    (with a small Hide/Show chip top-right), a vertical zoom pill on the right edge, the
+    timer bottom-left and the record button; the clip strip with delete buttons sits
+    below the frame.
   - The recorder therefore draws each frame into a 9:16 canvas (`startPortraitCapture`
     in `VideoRecorder.tsx`, rVFC-driven, 8 Mbps) and records that: portrait pixels, no
     rotation metadata, on every device. The camera is asked for 3840x2160 so the
@@ -265,8 +278,10 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
 - Email sending: Supabase custom SMTP via Resend (host smtp.resend.com:465, user
   `resend`, password = the Resend API key, sender no-reply@assignedtolabor.org). Resend
   domain `assignedtolabor.org` (id bd5e0fee-ae29-42c7-8b93-f8bd6dcdbd56, us-east-1) with
-  DKIM/SPF/MX/CNAME records at Namecheap. Until Resend shows the domain verified, every
-  auth email fails ("Error sending magic link email"); Google sign-in is unaffected.
+  DKIM/SPF/MX/CNAME records at Namecheap. VERIFIED 2026-09-12 after ~14 hours of
+  "pending" with provably correct DNS (Amazon-side delay; re-creating the domain issued
+  the same DKIM key). A magic-link test was delivered. A parallel `.com` registration
+  was deleted, unused.
 - Anonymous upload: `signInAnonymously()` on submit; "Keep me posted" calls
   `updateUser({email})`, which turns the same user into a real account after they
   confirm. Anonymous sessions are redirected away from /review and /admin but may see /my.
