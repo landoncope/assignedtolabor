@@ -4,7 +4,7 @@ Owner: Landon Cope (landon@highpsiproducts.com). Product owner: Travis (non-tech
 Claude owns this repo: language, dependencies, architecture, and this file. Keep CLAUDE.md
 current whenever a decision is made or reversed. Dates below are absolute (YYYY-MM-DD).
 
-## Status (2026-09-12)
+## Status (2026-09-15)
 
 **MVP is live in production at https://assignedtolabor.org.** Landon and Travis are
 admins and are testing. Working and verified: anonymous upload with portrait 9:16
@@ -12,9 +12,9 @@ recording (multi-clip, zoom), language-based routing to areas, review queue, ass
 Instagram posting workflow, admin (areas, managers), Google and magic-link sign-in,
 cross-device email links, email notifications through Resend (managers, uploaders,
 new reviewers), nightly file purge, branding (wheat-sheaf logo). Travis's first
-feedback round (language step, recorder layout) shipped 2026-09-12. Next: Travis's
-further testing, his other two areas, bot protection (Turnstile) before the QR poster
-goes public, then phase-2 Instagram API posting.
+feedback round (language step, recorder layout) shipped 2026-09-12; one-tap script
+skip and Turnstile bot protection (enforced in Supabase) shipped 2026-09-15. Next:
+Travis's further testing, his other two areas, then phase-2 Instagram API posting.
 
 ## Account setup (one-time, needs dashboard access)
 
@@ -322,10 +322,14 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
   review step and the magic-link form; the token goes to Supabase as `captchaToken`
   on `signInAnonymously` and `signInWithOtp`. Enforcement is Supabase's: Authentication
   -> Attack Protection -> Captcha -> Turnstile with the secret key (only Landon types
-  it). Without `NEXT_PUBLIC_TURNSTILE_SITE_KEY` the widget is absent, so local builds
-  and the headless tests run with `NEXT_PUBLIC_TURNSTILE_SITE_KEY= npx next build`.
-  Once enforcement is on, `scripts/dev/e2e-live.mjs` and the headless flow cannot sign
-  in anonymously against the live project; disable captcha in Supabase for a test run.
+  it). ENFORCED since 2026-09-15: `node scripts/dev/captcha-check.mjs` shows both
+  `signInAnonymously` and `signInWithOtp` rejected without a token ("captcha
+  protection: request disallowed"), and a real upload through the live site with the
+  widget succeeded the same day. Without `NEXT_PUBLIC_TURNSTILE_SITE_KEY` the widget is
+  absent, so local builds and the headless tests run with
+  `NEXT_PUBLIC_TURNSTILE_SITE_KEY= npx next build`. With enforcement on,
+  `scripts/dev/e2e-live.mjs` and the headless flow cannot sign in anonymously against
+  the live project; switch captcha off in Supabase for a test run and back on after.
 - Env vars (names only): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
   `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SITE_URL`, `CRON_SECRET`, `RESEND_API_KEY`,
   `NEXT_PUBLIC_TURNSTILE_SITE_KEY`.
