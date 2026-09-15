@@ -56,6 +56,14 @@ try {
   const { data: adminTry, error: adErr } = await mgr.from("areas").insert({ name: "X", language: "Y" }).select();
   ok("manager cannot create areas", !!adErr || !adminTry?.length, adErr?.message);
 
+  // 3b. delete: only reviewers of the video's area (or admins) may delete
+  const { data: delByOther } = await anon2.from("videos").delete().eq("id", vid.id).select("id");
+  ok("other user cannot delete the video", !delByOther?.length);
+  const { data: delBySelf } = await anon.from("videos").delete().eq("id", vid.id).select("id");
+  ok("uploader cannot delete the video", !delBySelf?.length);
+  const { data: delByMgr, error: delErr } = await mgr.from("videos").delete().eq("id", vid.id).select("id,storage_path");
+  ok("manager can delete a video in their area", !delErr && delByMgr?.length === 1, delErr?.message);
+
   // 4. admin seeding trigger
   const { data: adm, error: admErr } = await admin.auth.admin.createUser({ email: "travis.lish@gmail.com", password: "Temp-" + Date.now(), email_confirm: true });
   if (admErr) console.log("skip admin-seed check:", admErr.message); else {

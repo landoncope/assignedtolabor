@@ -1,8 +1,9 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { areaLabel, type Area, type VideoWithArea } from "@/lib/types";
-import { approveVideo, assignArea, markPosted, rejectVideo, reopenVideo } from "../actions";
+import { approveVideo, assignArea, deleteVideo, markPosted, rejectVideo, reopenVideo } from "../actions";
 
 export default function ReviewActions({ video, areas, caption, isAdmin }: { video: VideoWithArea; areas: Area[]; caption: string; isAdmin: boolean }) {
   const [pending, start] = useTransition();
@@ -11,6 +12,8 @@ export default function ReviewActions({ video, areas, caption, isAdmin }: { vide
   const [postUrl, setPostUrl] = useState("");
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const router = useRouter();
 
   function run(fn: () => Promise<{ error?: string } | { ok: true }>) {
     setError("");
@@ -97,6 +100,19 @@ export default function ReviewActions({ video, areas, caption, isAdmin }: { vide
       )}
 
       {error && <p className="text-sm text-danger">{error}</p>}
+
+      {confirmDelete ? (
+        <div className="card border-danger/40">
+          <div className="font-semibold text-danger">Delete this video?</div>
+          <p className="mt-1 text-sm text-muted">The file and its record are removed for good. The uploader is not notified.</p>
+          <div className="mt-3 flex gap-2">
+            <button onClick={() => run(async () => { const r = await deleteVideo(video.id); if ("ok" in r) router.push("/review"); return r; })} disabled={pending} className="btn-danger flex-1">{pending ? "Deleting…" : "Delete permanently"}</button>
+            <button onClick={() => setConfirmDelete(false)} disabled={pending} className="btn-secondary flex-1">Keep it</button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setConfirmDelete(true)} disabled={pending} className="self-start text-sm text-muted hover:text-danger">Delete this video</button>
+      )}
     </div>
   );
 }

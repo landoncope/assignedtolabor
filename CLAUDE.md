@@ -197,7 +197,8 @@ src/app/                    / landing, /upload flow, /qr poster, /login, /auth/*
 Commands: `npm run dev`, `npm run build`, `npm run lint`, `npm run typecheck`,
 `npm run db:push` (after `npx supabase link --project-ref <ref>`), `npm run db:types`,
 `node scripts/dev/e2e-live.mjs` (live RLS/flow test against the project in `.env.local`;
-creates and deletes throwaway users, safe to re-run). `scripts/dev/session-cookie.mjs`
+21 checks; creates and deletes throwaway users, safe to re-run; needs captcha OFF in
+Supabase for the run, and toggling it back on keeps the stored Turnstile secret). `scripts/dev/session-cookie.mjs`
 mints a throwaway admin session cookie; note the Chrome automation permission layer
 refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
 
@@ -220,6 +221,11 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
   `script = null`; the review page then shows "No script. The uploader improvised."
 - `videos.status`: pending -> approved -> posted, or pending/approved -> rejected.
   Reviewers may reopen. `script` is `{hook, body, cta}` and doubles as the caption.
+- Delete (2026-09-15, Landon): the review page has a "Delete this video" link with an
+  inline confirm. `deleteVideo` in `src/app/review/actions.ts` deletes the row through
+  the caller's session (RLS `videos_delete_manage`: area managers, admins, admins for
+  unassigned videos) and only then removes the file with the service role. Uploaders
+  cannot delete their own videos; nothing is emailed. `notifications.video_id` nulls out.
 - Authorization lives in RLS (`is_admin()`, `can_manage_area()`), not in app code.
   Server actions in `src/app/review/actions.ts` and `src/app/admin/actions.ts` only shape
   the write. The `guard_video_update` trigger stops uploaders changing status.
