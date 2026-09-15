@@ -213,6 +213,11 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
   client assigns `area_id` to the single active area with that language
   (`areaForLanguage`); no match or several matches leaves it null = admin queue, and
   reviewers assign the area on the review page.
+- Script builder (hook / body / CTA) is optional at every level: each step has
+  "I'll improvise this part", the first step has "Skip the script, I know what I'll
+  say" and the second "Skip the rest of the script", both jumping to the language
+  step (Landon, 2026-09-15: many people don't need prompts). A skipped script stores
+  `script = null`; the review page then shows "No script. The uploader improvised."
 - `videos.status`: pending -> approved -> posted, or pending/approved -> rejected.
   Reviewers may reopen. `script` is `{hook, body, cta}` and doubles as the caption.
 - Authorization lives in RLS (`is_admin()`, `can_manage_area()`), not in app code.
@@ -247,8 +252,7 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
     (default 1.5x, user-selectable 1x/1.5x/2x) and the preview applies the same zoom
     with a CSS scale, keeping it WYSIWYG. The capture size is logged to the console
     (`[recorder] camera WxH · recording WxH`); the on-screen readout was removed
-    2026-09-12 once orientation was settled. A small "Camera WxH · recording WxH" readout
-    under the preview exists for field diagnosis. Diagnose files with
+    2026-09-12 once orientation was settled. Diagnose files with
     `node scripts/dev/mp4-orientation-check.mjs f.mp4` and by extracting frames with
     and without `-noautorotate`.
   - Full-flow test with a fake camera (exercises the portrait crop, merge, and upload

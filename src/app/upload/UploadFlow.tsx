@@ -54,6 +54,11 @@ export default function UploadFlow({ areas }: { areas: Area[] }) {
   const teleprompter = [script.hook, script.body, script.cta].filter(Boolean).join(" ");
 
   function go(next: Step) { setError(""); setStep(next); }
+  /** Skip the remaining script prompts: the uploader knows what they will say. */
+  function skipScript() {
+    setHook(null); setTplKey(null); setCta(null);
+    go("language");
+  }
   function back() { const i = ORDER.indexOf(step); if (i > 0) go(ORDER[i - 1]); }
 
   function setCapturePreview(c: Capture | null) {
@@ -146,7 +151,7 @@ export default function UploadFlow({ areas }: { areas: Area[] }) {
       {step === "hook" && (
         <StepShell title="Start with a hook" sub="The first line that makes someone keep watching.">
           <Choices options={HOOKS} value={hook} onChange={setHook} customValue={hookCustom} onCustom={setHookCustom} customLabel="Write my own" />
-          <NextRow onSkip={() => { setHook(null); go("body"); }} onNext={() => go("body")} disabled={hook === "custom" && !hookCustom.trim()} />
+          <NextRow onSkip={() => { setHook(null); go("body"); }} onNext={() => go("body")} disabled={hook === "custom" && !hookCustom.trim()} onSkipAll={skipScript} skipAllLabel="Skip the script, I know what I'll say" />
         </StepShell>
       )}
 
@@ -173,7 +178,7 @@ export default function UploadFlow({ areas }: { areas: Area[] }) {
             </div>
           )}
           {tplKey === "custom" && <textarea className="input mt-4 min-h-28 border-white/15 bg-white/5 text-white" placeholder="A few sentences in your own words" value={bodyCustom} onChange={(e) => setBodyCustom(e.target.value)} />}
-          <NextRow onSkip={() => { setTplKey(null); go("cta"); }} onNext={() => go("cta")} disabled={!tplKey || (tplKey === "custom" && !bodyCustom.trim())} />
+          <NextRow onSkip={() => { setTplKey(null); go("cta"); }} onNext={() => go("cta")} disabled={!tplKey || (tplKey === "custom" && !bodyCustom.trim())} onSkipAll={() => { setTplKey(null); setCta(null); go("language"); }} skipAllLabel="Skip the rest of the script" />
         </StepShell>
       )}
 
@@ -304,11 +309,12 @@ function Choices({ options, value, onChange, customValue, onCustom, customLabel 
   );
 }
 
-function NextRow({ onSkip, onNext, disabled }: { onSkip: () => void; onNext: () => void; disabled?: boolean }) {
+function NextRow({ onSkip, onNext, disabled, onSkipAll, skipAllLabel }: { onSkip: () => void; onNext: () => void; disabled?: boolean; onSkipAll?: () => void; skipAllLabel?: string }) {
   return (
     <div className="mt-auto flex flex-col gap-2 pt-6">
       <button onClick={onNext} disabled={disabled} className="btn-primary py-3.5 text-base">Next</button>
       <button onClick={onSkip} className="py-2 text-sm font-semibold text-neutral-400">I&apos;ll improvise this part</button>
+      {onSkipAll && <button onClick={onSkipAll} className="py-1 text-sm text-neutral-500 underline-offset-2 hover:underline">{skipAllLabel ?? "Skip the script"}</button>}
     </div>
   );
 }
