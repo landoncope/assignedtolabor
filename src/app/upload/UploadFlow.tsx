@@ -7,7 +7,7 @@ import VideoRecorder, { type Capture } from "@/components/VideoRecorder";
 import { LANGUAGE_SUGGESTIONS, areaForLanguage, normalizeLanguage } from "@/lib/languages";
 import { CONSENT, CTAS, HOOKS, TEMPLATES, fillTemplate } from "@/lib/script";
 import { createClient } from "@/lib/supabase/client";
-import { type Area, type Script } from "@/lib/types";
+import { areaLabel, type Area, type AreaSummary, type Script } from "@/lib/types";
 import { uploadVideo } from "@/lib/upload-video";
 
 type Step = "welcome" | "consent" | "hook" | "body" | "cta" | "language" | "record" | "review" | "done";
@@ -15,11 +15,11 @@ const ORDER: Step[] = ["welcome", "consent", "hook", "body", "cta", "language", 
 
 /**
  * The guided quick-upload flow: consent, a three-step script builder (hook, body,
- * call to action), area pick, record or choose a file, upload. Anonymous: a Supabase
- * anonymous session is created on submit; the uploader can attach an email afterward
- * to keep the video in an account.
+ * call to action), language (and, for members, their team), record or choose a file,
+ * upload. Anonymous: a Supabase anonymous session is created on submit; the uploader
+ * can attach an email afterward to keep the video in an account.
  */
-export default function UploadFlow({ areas }: { areas: Area[] }) {
+export default function UploadFlow({ areas, myTeams, signedIn }: { areas: Area[]; myTeams: AreaSummary[]; signedIn: boolean }) {
   const supabase = useMemo(() => createClient(), []);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -33,6 +33,7 @@ export default function UploadFlow({ areas }: { areas: Area[] }) {
   const [cta, setCta] = useState<string | null>(null);
   const [ctaCustom, setCtaCustom] = useState("");
   const [language, setLanguage] = useState("");
+  const [teamId, setTeamId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [capture, setCapture] = useState<Capture | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -89,7 +90,7 @@ export default function UploadFlow({ areas }: { areas: Area[] }) {
       if (!session) throw new Error("Could not start a session. Please try again.");
       const lang = normalizeLanguage(language);
       await uploadVideo(supabase, session.user.id, capture.file, {
-        areaId: areaForLanguage(areas, lang)?.id ?? null,
+        areaId: teamId ?? areaForLanguage(areas, lang)?.id ?? null,
         language: lang || null,
         script: teleprompter ? script : null,
         uploaderName: name.trim() || null,
@@ -192,6 +193,29 @@ export default function UploadFlow({ areas }: { areas: Area[] }) {
 
       {step === "language" && (
         <StepShell title="What language will you speak?" sub="Your video goes to a team that shares it with people who speak your language, in your part of the world.">
+          {myTeams.length > 0 && (
+            <div className="mb-5">
+              <span className="mb-1 block text-xs text-neutral-400">Is this video for one of your teams?</span>
+              <div className="flex flex-col gap-2">
+                {myTeams.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => {
+                      const on = teamId !== t.id;
+                      setTeamId(on ? t.id : null);
+                      if (on && (!language.trim() || myTeams.some((x) => x.language === language))) setLanguage(t.language);
+                    }}
+                    aria-pressed={teamId === t.id}
+                    className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold ${teamId === t.id ? "border-amber-400 bg-amber-400/10" : "border-white/15"}`}
+                  >
+                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${teamId === t.id ? "border-amber-400 bg-amber-400 text-black" : "border-white/40"}`}>{teamId === t.id ? "✓" : ""}</span>
+                    {areaLabel(t)}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-neutral-500">{teamId ? "It goes straight to that team's lead." : "Leave this unticked and it goes by language."}</p>
+            </div>
+          )}
           <label className="block">
             <span className="mb-1 block text-xs text-neutral-400">Language</span>
             <input
@@ -278,7 +302,11 @@ export default function UploadFlow({ areas }: { areas: Area[] }) {
               {emailError && <p className="mt-2 text-sm text-red-400">{emailError}</p>}
             </form>
           )}
-          <Link href="/" className="mt-8 text-sm text-neutral-500">Done</Link>
+          <p className="mt-6 text-sm text-neutral-400">
+            Want to help a team share videos, or lead one?{" "}
+            <Link href={signedIn ? "/my/teams" : "/login?next=%2Fmy%2Fteams"} className="text-amber-400 underline underline-offset-2">{signedIn ? "Join or start a team" : "Sign in and apply"}</Link>
+          </p>
+          <Link href="/" className="mt-6 text-sm text-neutral-500">Done</Link>
         </div>
       )}
     </main>

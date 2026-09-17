@@ -27,13 +27,18 @@ export default async function ReviewPage({ searchParams }: PageProps<"/review">)
     .order("created_at", { ascending: status !== "pending" ? false : true })
     .limit(200);
   const videos = (data ?? []) as VideoWithArea[];
+  // Pending team requests this viewer may decide (RLS scopes them; their own are excluded).
+  const { count: requestCount } = await supabase.from("team_applications").select("id", { count: "exact", head: true }).eq("status", "pending").neq("user_id", viewer.userId);
 
   return (
     <>
       <Nav current="review" />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
         <h1 className="text-2xl font-bold">Review</h1>
-        <p className="mt-1 text-sm text-muted">{viewer.isAdmin ? "All areas, plus videos with no area." : "Videos sent to the areas you manage."}</p>
+        <p className="mt-1 text-sm text-muted">{viewer.isAdmin ? "All teams, plus videos with no team." : "Videos sent to the teams you lead."}</p>
+        <Link href="/review/requests" className={`mt-3 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${requestCount ? "border-gold/50 bg-gold/10 font-semibold" : "border-line text-muted hover:text-foreground"}`}>
+          {requestCount ? `${requestCount} ${requestCount === 1 ? "person is" : "people are"} waiting to join a team${viewer.isAdmin ? " or start one" : ""}` : "Team requests"} ›
+        </Link>
         <div className="mt-5 flex gap-1 overflow-x-auto rounded-lg border border-line bg-card p-1">
           {TABS.map((t) => (
             <Link key={t.key} href={`/review?status=${t.key}`} className={`whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium ${status === t.key ? "bg-foreground text-background" : "text-muted hover:text-foreground"}`}>{t.label}</Link>
@@ -53,7 +58,7 @@ export default async function ReviewPage({ searchParams }: PageProps<"/review">)
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 text-sm font-semibold">
                       <span>{areaLabel(v.area)}</span>
-                      {!v.area && <span className="rounded bg-gold/15 px-1.5 py-0.5 text-xs text-gold">needs an area</span>}
+                      {!v.area && <span className="rounded bg-gold/15 px-1.5 py-0.5 text-xs text-gold">needs a team</span>}
                     </div>
                     <div className="mt-0.5 text-sm text-muted">
                       {v.uploader_name ?? "Anonymous"}{v.language ? ` · speaks ${v.language}` : ""} · {new Date(v.created_at).toLocaleString()}{v.duration_seconds ? ` · ${v.duration_seconds}s` : ""}

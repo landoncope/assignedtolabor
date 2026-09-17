@@ -50,7 +50,7 @@ export default function ReviewActions({ video, areas, caption, isAdmin }: { vide
     <div className="flex flex-col gap-4">
       {(isAdmin || !video.area) && (
         <label className="block">
-          <span className="label">Area</span>
+          <span className="label">Team</span>
           <select className="input" value={video.area_id ?? ""} disabled={pending} onChange={(e) => run(() => assignArea(video.id, e.target.value || null))}>
             <option value="">Unassigned</option>
             {areas.map((a) => <option key={a.id} value={a.id}>{areaLabel(a)}</option>)}
@@ -74,7 +74,7 @@ export default function ReviewActions({ video, areas, caption, isAdmin }: { vide
           <div>
             <div className="font-semibold">Post it</div>
             <p className="mt-1 text-sm text-muted">
-              Download the file, post it from {handle ? <>the <b>@{handle.replace(/^@/, "")}</b> Instagram account</> : "the area's Instagram account"}, then paste the link here.
+              Download the file, post it from {handle ? <>the <b>@{handle.replace(/^@/, "")}</b> Instagram account</> : "the team's Instagram account"}, then paste the link here.
             </p>
           </div>
           <div className="flex gap-2">

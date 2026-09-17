@@ -18,12 +18,16 @@ try {
   const { data: v1 } = await admin.from("videos").insert({ user_id: up.user.id, area_id: area.id, uploader_name: "Dry Run", status: "pending" }).select("id").single();      // -> new_videos to the manager
   const { data: v2 } = await admin.from("videos").insert({ user_id: up.user.id, area_id: null, uploader_name: "Dry Run", status: "pending" }).select("id").single();         // -> new_videos to admins (no area)
   const { data: v3 } = await admin.from("videos").insert({ user_id: up.user.id, area_id: area.id, uploader_name: "Dry Run", status: "posted", post_url: "https://instagram.com/p/x", managers_notified_at: new Date().toISOString() }).select("id").single(); // -> outcome to uploader
+  const { data: mem } = await admin.auth.admin.createUser({ email: `notify-mem-${Date.now()}@example.com`, email_confirm: true });
+  created.push(mem.user.id);
+  await admin.from("team_applications").insert({ user_id: mem.user.id, kind: "join", area_id: area.id, note: "dry run" });                         // -> team_application to the manager
+  await admin.from("team_applications").insert({ user_id: mem.user.id, kind: "start", team_name: "Dry Run Team", language: "Klingon", status: "approved", decided_at: new Date().toISOString(), notified_at: new Date().toISOString() }); // -> application_outcome to the member
   const r = await fetch(`${base}/api/cron/notify?dry=1`, { headers: { Authorization: `Bearer ${env.CRON_SECRET}` } });
   const j = await r.json();
   console.log("status", r.status, "planned", j.planned, "failures", j.failures);
   for (const p of j.plan) console.log(`  ${p.kind.padEnd(16)} -> ${p.to.padEnd(40)} ${p.subject}`);
   const kinds = new Set(j.plan.map(p => p.kind));
-  const ok = ["new_videos","outcome","manager_added"].every(k => kinds.has(k)) && !kinds.has("manager_invited");
+  const ok = ["new_videos","outcome","manager_added","team_application","application_outcome"].every(k => kinds.has(k)) && !kinds.has("manager_invited");
   console.log(ok ? "RESULT: PASS (invite converted to manager, no stale invite email)" : "RESULT: CHECK kinds " + [...kinds].join(","));
   for (const v of [v1, v2, v3]) await admin.from("videos").delete().eq("id", v.id);
 } finally {

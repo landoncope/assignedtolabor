@@ -59,6 +59,13 @@ export async function removeInvite(areaId: string, email: string): Promise<Resul
   return error ? { error: error.message } : done();
 }
 
+export async function removeMember(areaId: string, userId: string): Promise<Result> {
+  await requireAdmin("/admin");
+  const supabase = await createClient();
+  const { error } = await supabase.from("area_members").delete().eq("area_id", areaId).eq("user_id", userId);
+  return error ? { error: error.message } : done();
+}
+
 export async function setRole(userId: string, role: "member" | "admin"): Promise<Result> {
   const admin = await requireAdmin("/admin");
   if (userId === admin.userId && role !== "admin") return { error: "You can't remove your own admin role." };

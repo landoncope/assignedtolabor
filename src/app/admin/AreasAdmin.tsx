@@ -2,11 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { areaLabel, type Area } from "@/lib/types";
-import { addManager, createArea, removeInvite, removeManager, updateArea } from "./actions";
+import { addManager, createArea, removeInvite, removeManager, removeMember, updateArea } from "./actions";
 
 export type AreaWithManagers = Area & {
   managers: { id: string; email: string | null; display_name: string | null }[];
   invites: string[];
+  members: { id: string; email: string | null; display_name: string | null }[];
 };
 
 export default function AreasAdmin({ areas }: { areas: AreaWithManagers[] }) {
@@ -20,10 +21,10 @@ export default function AreasAdmin({ areas }: { areas: AreaWithManagers[] }) {
     <div className="mt-4 flex flex-col gap-3">
       {areas.map((a) => <AreaCard key={a.id} area={a} run={run} pending={pending} />)}
       <form action={(fd) => run(() => createArea(fd))} className="card flex flex-col gap-2 sm:flex-row sm:items-end">
-        <label className="flex-1"><span className="label">New area</span><input name="name" className="input" placeholder="Philippines" required /></label>
+        <label className="flex-1"><span className="label">New team</span><input name="name" className="input" placeholder="Philippines" required /></label>
         <label className="flex-1"><span className="label">Language</span><input name="language" className="input" placeholder="Tagalog" required /></label>
         <label className="flex-1"><span className="label">Instagram</span><input name="instagram_handle" className="input" placeholder="@handle" /></label>
-        <button className="btn-primary" disabled={pending}>Add area</button>
+        <button className="btn-primary" disabled={pending}>Add team</button>
       </form>
       {error && <p className="text-sm text-danger">{error}</p>}
     </div>
@@ -54,7 +55,7 @@ function AreaCard({ area, run, pending }: { area: AreaWithManagers; run: (fn: ()
         </div>
       )}
       <div className="mt-3 border-t border-line pt-3">
-        <div className="label">Managers</div>
+        <div className="label">Leads</div>
         <ul className="flex flex-col gap-1 text-sm">
           {area.managers.map((m) => (
             <li key={m.id} className="flex items-center justify-between">
@@ -68,12 +69,27 @@ function AreaCard({ area, run, pending }: { area: AreaWithManagers; run: (fn: ()
               <button onClick={() => run(() => removeInvite(area.id, e))} disabled={pending} className="text-xs hover:text-danger">Remove</button>
             </li>
           ))}
-          {area.managers.length + area.invites.length === 0 && <li className="text-muted">No managers yet. Admins cover it.</li>}
+          {area.managers.length + area.invites.length === 0 && <li className="text-muted">No leads yet. Admins cover it.</li>}
         </ul>
         <form onSubmit={(e) => { e.preventDefault(); run(() => addManager(area.id, email)); setEmail(""); }} className="mt-2 flex gap-2">
-          <input className="input" type="email" placeholder="manager@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-          <button className="btn-secondary whitespace-nowrap" disabled={pending || !email}>Add manager</button>
+          <input className="input" type="email" placeholder="lead@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <button className="btn-secondary whitespace-nowrap" disabled={pending || !email}>Add lead</button>
         </form>
+      </div>
+      <div className="mt-3 border-t border-line pt-3">
+        <div className="label">Members</div>
+        {area.members.length === 0 ? (
+          <p className="text-sm text-muted">Nobody has joined yet. People ask to join from their Teams page; the leads approve them.</p>
+        ) : (
+          <ul className="flex flex-col gap-1 text-sm">
+            {area.members.map((m) => (
+              <li key={m.id} className="flex items-center justify-between">
+                <span>{m.display_name ? `${m.display_name} · ` : ""}{m.email}</span>
+                <button onClick={() => run(() => removeMember(area.id, m.id))} disabled={pending} className="text-xs text-muted hover:text-danger">Remove</button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

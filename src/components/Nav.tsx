@@ -3,7 +3,7 @@ import { getViewer } from "@/lib/auth";
 import Mark from "@/components/Mark";
 
 /** Top bar for the signed-in surfaces (my videos, review, admin). */
-export default async function Nav({ current }: { current?: "my" | "review" | "admin" }) {
+export default async function Nav({ current }: { current?: "my" | "teams" | "review" | "admin" }) {
   const v = await getViewer();
   const signedIn = v && !v.isAnonymous;
   const link = (href: string, label: string, key: typeof current) => (
@@ -22,6 +22,7 @@ export default async function Nav({ current }: { current?: "my" | "review" | "ad
           <span>Assigned <span className="text-gold">To</span> Labor</span>
         </Link>
         {signedIn && link("/my", "My videos", "my")}
+        {signedIn && link("/my/teams", "Teams", "teams")}
         {v?.isManager && link("/review", "Review", "review")}
         {v?.isAdmin && link("/admin", "Admin", "admin")}
         {signedIn ? (

@@ -64,7 +64,43 @@ try {
   const { data: delByMgr, error: delErr } = await mgr.from("videos").delete().eq("id", vid.id).select("id,storage_path");
   ok("manager can delete a video in their area", !delErr && delByMgr?.length === 1, delErr?.message);
 
-  // 4. admin seeding trigger
+  // 4. teams: join requests decided by the team lead, new teams decided by an admin
+  const memEmail = `member-${Date.now()}@example.com`;
+  const { data: mu } = await admin.auth.admin.createUser({ email: memEmail, password: "Testpass-123", email_confirm: true }); created.push(mu.user.id);
+  const mem = createClient(URL, ANON, { auth: { persistSession: false } });
+  await mem.auth.signInWithPassword({ email: memEmail, password: "Testpass-123" });
+  const { data: app, error: appErr } = await mem.from("team_applications").insert({ user_id: mu.user.id, kind: "join", area_id: areas[0].id, note: "e2e" }).select("id").single();
+  ok("member can ask to join a team", !appErr && !!app?.id, appErr?.message);
+  const { data: dup, error: dupErr } = await mem.from("team_applications").insert({ user_id: mu.user.id, kind: "join", area_id: areas[0].id }).select("id");
+  ok("a second open request for the same team is refused", !!dupErr || !dup?.length, dupErr?.code);
+  const { data: anonSees } = await anon.from("team_applications").select("id").eq("id", app.id);
+  ok("other users cannot see the request", anonSees?.length === 0);
+  const { data: mgrSees } = await mgr.from("team_applications").select("id, profile:profiles!team_applications_user_id_fkey(email)").eq("id", app.id);
+  ok("team lead sees the request and the applicant's email", mgrSees?.length === 1 && mgrSees[0].profile?.email === memEmail, JSON.stringify(mgrSees));
+  const { error: selfDecide } = await mem.rpc("decide_team_application", { app_id: app.id, approve: true, note: null });
+  ok("applicant cannot decide their own request", !!selfDecide, selfDecide?.message);
+  const { error: decErr } = await mgr.rpc("decide_team_application", { app_id: app.id, approve: true, note: "welcome" });
+  ok("team lead approves the request", !decErr, decErr?.message);
+  const { data: membership } = await mem.from("area_members").select("area_id").eq("user_id", mu.user.id);
+  ok("approval made them a member", membership?.length === 1);
+  const { data: startApp, error: startErr } = await mem.from("team_applications").insert({ user_id: mu.user.id, kind: "start", team_name: `E2E Team ${Date.now()}`, language: "Klingon", region: "Nowhere", note: "e2e" }).select("id").single();
+  ok("member can propose a new team", !startErr && !!startApp?.id, startErr?.message);
+  const { error: mgrStart } = await mgr.rpc("decide_team_application", { app_id: startApp.id, approve: true, note: null });
+  ok("a team lead cannot approve a new team", !!mgrStart, mgrStart?.message);
+  const admEmail = `admin-${Date.now()}@example.com`;
+  const { data: au } = await admin.auth.admin.createUser({ email: admEmail, password: "Testpass-123", email_confirm: true }); created.push(au.user.id);
+  await admin.from("profiles").update({ role: "admin" }).eq("id", au.user.id);
+  const admClient = createClient(URL, ANON, { auth: { persistSession: false } });
+  await admClient.auth.signInWithPassword({ email: admEmail, password: "Testpass-123" });
+  const { error: admDec } = await admClient.rpc("decide_team_application", { app_id: startApp.id, approve: true, note: null });
+  ok("admin approves the new team", !admDec, admDec?.message);
+  const { data: newArea } = await admin.from("areas").select("id").eq("language", "Klingon");
+  const { data: newLead } = newArea?.length ? await admin.from("area_managers").select("user_id, notified_at").eq("area_id", newArea[0].id).eq("user_id", mu.user.id) : { data: [] };
+  ok("approval created the team with the applicant as its lead", newArea?.length === 1 && newLead?.length === 1 && !!newLead[0].notified_at);
+  const { error: againErr } = await admClient.rpc("decide_team_application", { app_id: startApp.id, approve: false, note: null });
+  ok("a decided request cannot be decided again", !!againErr, againErr?.message);
+
+  // 5. admin seeding trigger
   const { data: adm, error: admErr } = await admin.auth.admin.createUser({ email: "travis.lish@gmail.com", password: "Temp-" + Date.now(), email_confirm: true });
   if (admErr) console.log("skip admin-seed check:", admErr.message); else {
     created.push(adm.user.id);
@@ -75,5 +111,6 @@ try {
 finally {
   for (const id of created) { await admin.storage.from("videos").list(id).then(async ({ data }) => { if (data?.length) await admin.storage.from("videos").remove(data.map(f => `${id}/${f.name}`)); }); await admin.auth.admin.deleteUser(id); }
   await admin.from("manager_invites").delete().like("email", "mgr-%@example.com");
+  await admin.from("areas").delete().eq("language", "Klingon");
   console.log("cleanup done", created.length, "users removed");
 }

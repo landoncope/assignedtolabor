@@ -10,7 +10,7 @@ export default function TermsPage() {
       <h2>Your videos</h2>
       <ul>
         <li>You must be the person in the video, or have permission from everyone who appears in it. If you are under 18, a parent or guardian must agree to these terms for you.</li>
-        <li>You keep ownership of your video. You give us and the area&rsquo;s volunteer team permission to review it, edit it lightly for length or captions, and publish it on social media accounts run by the team, without payment.</li>
+        <li>You keep ownership of your video. You give us and the team&rsquo;s volunteer leads permission to review it, edit it lightly for length or captions, and publish it on social media accounts run by the team, without payment.</li>
         <li>Submitting a video does not guarantee it will be posted. Reviewers may decline any video for any reason.</li>
         <li>Do not submit content that is hateful, harassing, sexual, violent, misleading, or that you do not have the right to share.</li>
       </ul>

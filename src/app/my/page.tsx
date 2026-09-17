@@ -27,6 +27,12 @@ export default async function MyVideosPage({ searchParams }: PageProps<"/my">) {
           <h1 className="text-2xl font-bold">My videos</h1>
           <Link href="/upload" className="btn-primary">Record another</Link>
         </div>
+        {viewer && !viewer.isAnonymous && (
+          <Link href="/my/teams" className="card mt-4 flex items-center justify-between gap-3 hover:border-accent">
+            <span className="text-sm"><b>Teams.</b> Join a team or start one, and your videos go straight to its lead.</span>
+            <span className="shrink-0 text-sm text-accent">Open ›</span>
+          </Link>
+        )}
         {viewer?.isAnonymous && (
           <p className="mt-3 text-sm text-muted">You&apos;re not signed in. These videos are tied to this browser only. <Link href="/login" className="underline">Sign in</Link> to keep them.</p>
         )}

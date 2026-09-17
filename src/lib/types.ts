@@ -50,10 +50,34 @@ export type Video = {
   created_at: string;
 };
 
-export type VideoWithArea = Video & { area: Pick<Area, "id" | "name" | "language" | "instagram_handle"> | null };
+export type AreaSummary = Pick<Area, "id" | "name" | "language" | "instagram_handle">;
+export type VideoWithArea = Video & { area: AreaSummary | null };
+
+export type ApplicationKind = "start" | "join";
+export type ApplicationStatus = "pending" | "approved" | "declined";
+/** A request to join a team (kind join) or to start one and lead it (kind start). */
+export type TeamApplication = {
+  id: string;
+  user_id: string;
+  kind: ApplicationKind;
+  area_id: string | null;
+  team_name: string | null;
+  language: string | null;
+  region: string | null;
+  instagram_handle: string | null;
+  note: string | null;
+  status: ApplicationStatus;
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  notified_at: string | null;
+  outcome_notified_at: string | null;
+  created_at: string;
+};
+export const APPLICATION_STATUS_LABEL: Record<ApplicationStatus, string> = { pending: "Waiting for a decision", approved: "Approved", declined: "Declined" };
 
 export function areaLabel(a: Pick<Area, "name" | "language"> | null | undefined): string {
-  if (!a) return "Unassigned";
+  if (!a) return "No team";
   return a.name === a.language ? a.name : `${a.name} · ${a.language}`;
 }
 

@@ -16,8 +16,10 @@ feedback round (language step, recorder layout) shipped 2026-09-12; one-tap scri
 skip and Turnstile bot protection (enforced in Supabase) shipped 2026-09-15; reviewer
 delete and, after a tester's frozen video, the recorder rework (1080p capture, camera
 zoom, raw mic audio, frame watchdog, per-recording diagnostics on the review page)
-shipped 2026-09-17. Next: a real-phone re-test of the recorder, Travis's other two
-areas, then phase-2 Instagram API posting.
+shipped 2026-09-17. Teams (members apply to join a team or to start one; leads and
+admins decide; members tag uploads with their team) shipped 2026-09-17 for Travis's
+Saturday 2026-09-19 event (100+ uploads, 10+ would-be leads). Next: a real-phone
+re-test of the recorder, the event, then phase-2 Instagram API posting.
 
 ## Account setup (one-time, needs dashboard access)
 
@@ -151,6 +153,9 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
   with generated DB types, RLS as the authorization layer, Supabase CLI migrations in
   `supabase/migrations/`. Playwright for the handful of end-to-end flows that matter
   (quick upload, review, role gating).
+- **Vocabulary (2026-09-17):** the UI says **team** and **team lead** everywhere
+  (Travis's words); the schema keeps `areas`, `area_managers`, `manager_invites`.
+  Members of a team are `area_members`.
 - **Areas:** an admin-defined name plus a language, no geo logic in the app. Travis's
   examples (2026-09-09): "Philippines / Tagalog", "West Africa / French",
   "East Africa / Swahili"; some future areas are language-only ("Spanish",
@@ -194,13 +199,15 @@ src/lib/upload-video.ts     browser -> signed upload URL -> videos row
 src/lib/merge-clips.ts      ffmpeg.wasm clip concat (runtime copied to public/ffmpeg on postinstall)
 src/components/             Nav, VideoRecorder (multi-clip + teleprompter), VideoPlayer (signed URL)
 src/app/                    / landing, /upload flow, /qr poster, /login, /auth/*, /my,
-                            /review (+/[id]), /admin, /api/videos/[id]/playback-url, /api/cron/purge
+                            /my/teams (join/start a team), /review (+/[id], /requests),
+                            /admin, /api/videos/[id]/playback-url, /api/cron/{purge,notify}
 ```
 
 Commands: `npm run dev`, `npm run build`, `npm run lint`, `npm run typecheck`,
 `npm run db:push` (after `npx supabase link --project-ref <ref>`), `npm run db:types`,
 `node scripts/dev/e2e-live.mjs` (live RLS/flow test against the project in `.env.local`;
-22 checks; creates and deletes throwaway users, safe to re-run; needs captcha OFF in
+34 checks incl. teams; creates and deletes throwaway users and a Klingon test team,
+safe to re-run; needs captcha OFF in
 Supabase for the run, and toggling it back on keeps the stored Turnstile secret). `scripts/dev/session-cookie.mjs`
 mints a throwaway admin session cookie; note the Chrome automation permission layer
 refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
@@ -211,6 +218,25 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
   granted automatically to emails in `admin_seed_emails`. Managers are rows in
   `area_managers`; `manager_invites` holds emails that have not signed in yet and is
   applied by the same trigger on first sign-in or on anonymous-to-email upgrade.
+- Teams (2026-09-17, Travis's request for the Saturday event): `area_members` (team
+  membership, distinct from leads) and `team_applications` (`kind` join or start;
+  `status` pending/approved/declined; start requests carry `team_name`, `language`,
+  `region`, `instagram_handle`; one open request per person per target, enforced by
+  partial unique indexes). Members apply from `/my/teams` (requires a real account;
+  anonymous sessions are sent to sign in). Join requests are decided by the team's
+  leads, start requests by admins, both on `/review/requests` (linked with a count
+  from `/review` and `/admin`). Decisions go through the security-definer function
+  `decide_team_application(app_id, approve, note)`, which checks who may decide and
+  creates the membership, or the team plus its lead (+ member), in the same
+  transaction; there is no update policy on the table. Leads can read the profiles
+  of applicants to and members of their teams (`profiles_select_for_leads`). Uploads:
+  signed-in members (and leads) see their teams as tick-boxes on the language step
+  (`myTeams` from `src/app/upload/page.tsx`); a ticked team sets `area_id` directly and
+  prefills the language, otherwise routing is by language as before. The thank-you
+  screen points at `/my/teams` (or sign-in). Emails (cron): `team_application` to the
+  deciders (leads, admins as fallback; grouped per recipient per sweep) and
+  `application_outcome` to the applicant; a newly created team's lead gets the
+  approval email only (`area_managers.notified_at` is set by the function).
 - `areas` = name + language + optional `instagram_handle`. Since 2026-09-12 (Travis's
   feedback) uploaders do not pick a team: they type the language they will speak
   (`videos.language`, free text with suggestions from `src/lib/languages.ts`). The
