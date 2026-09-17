@@ -47,11 +47,12 @@ re-test of the recorder, the event, then phase-2 Instagram API posting.
    `https://zyqualxehxopcvkqdjlo.supabase.co/auth/v1/callback` and, since 2026-09-17,
    `https://api.assignedtolabor.org/auth/v1/callback` too. Branding links to
    `/privacy` and `/terms` on assignedtolabor.org (pages exist in the app). The
-   consent screen shows the callback DOMAIN, not the app name, until Google's brand
-   verification is done; with the custom domain it reads api.assignedtolabor.org
-   instead of the supabase.co address a tester flagged. Brand verification (Google
-   Auth Platform -> Branding -> Verify branding) was submitted 2026-09-17. Its one
-   prerequisite was Search Console ownership of the home page: the URL-prefix
+   consent screen showed the callback DOMAIN (the supabase.co address a tester
+   flagged, then api.assignedtolabor.org) until brand verification. Brand
+   verification (Google Auth Platform -> Branding -> Verify branding, then Publish
+   branding) passed and was published 2026-09-17: the consent screen now shows
+   "Assigned To Labor". Google's check was automated and took minutes, not days. Its
+   one prerequisite was Search Console ownership of the home page: the URL-prefix
    property `https://assignedtolabor.org/` is verified for landoncope@gmail.com by
    the meta tag in `src/app/layout.tsx` (`metadata.verification.google`; keep it).
    A Domain property via DNS was attempted first but Namecheap's session had expired
