@@ -12,6 +12,9 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
   openGraph: { siteName: "Assigned To Labor", title: "Assigned To Labor", description, type: "website", url: "/" },
   twitter: { card: "summary_large_image" },
+  // Google Search Console ownership of assignedtolabor.org (landoncope@gmail.com), which
+  // Google's OAuth brand verification requires. Public token, not a secret. 2026-09-17.
+  verification: { google: "AcgG5o-54F2AlqnLIVe4jcRqycJwanxZaUYoUSQCPFw" },
 };
 
 export const viewport: Viewport = { themeColor: "#002850", width: "device-width", initialScale: 1, viewportFit: "cover" };
