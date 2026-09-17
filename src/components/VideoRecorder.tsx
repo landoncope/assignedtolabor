@@ -1,31 +1,46 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { CaptureMeta, ZoomMode } from "@/lib/capture-meta";
 import { baseMimeType, extensionFor, pickRecorderMimeType } from "@/lib/merge-clips";
 import { RECORDING_TIPS } from "@/lib/script";
 
-type Clip = { id: number; blob: Blob; thumb: string; secs: number };
+type Clip = { id: number; blob: Blob; thumb: string; secs: number; ms: number; frames: number };
 
 // Selfie camera. Ask for LANDSCAPE numbers on purpose: iOS Safari fits width/height in
 // sensor coordinates, so 1920x1080 matches a real preset and, with the phone upright,
 // the element reports the full tall frame as 1080x1920. Asking for 1080x1920 instead
 // makes WebKit pick the 4K mode and crop a thin slice out of the sideways frame, which
 // arrives as a wide band with a third of the vertical view (researched 2026-09-11).
-// 3840x2160 (landscape numbers, see above) selects the 4K sensor mode where one exists,
-// so the digital zoom below still has real pixels to work with; phones and webcams
-// without 4K fall back to their largest mode.
+// 1080p, not 4K (2026-09-17): a 4K frame through drawImage + canvas capture + H.264
+// ran at ~15 fps on a tester's iPhone and the camera stopped delivering frames 8 s
+// before the end of a 41 s clip. Zoom is done by the camera itself where the browser
+// exposes it (iOS 17+, Android Chrome), so 1080p loses nothing there; elsewhere the
+// canvas crops.
+// The mic is asked for raw audio. The defaults (echo cancellation and friends) put iOS
+// into its phone-call voice-processing unit, which is the "worse than the Camera app"
+// sound a tester noticed. Nothing plays back while recording, so there is no echo.
 const CAMERA: MediaStreamConstraints = {
-  video: { facingMode: "user", width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 30 } },
-  audio: true,
+  video: { facingMode: "user", width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
+  audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
 };
 const VIDEO_BITRATE = 8_000_000;
+const AUDIO_BITRATE = 192_000;
 // The browser gets the front camera's full wide field of view, which reads as "0.5x"
-// next to the Camera app's cropped selfie framing. Default to a 1.5x crop; the user
-// can change it. Applied identically to the preview and to the recorded canvas.
+// next to the Camera app's cropped selfie framing. Default to a 1.5x zoom; the user
+// can change it. Applied by the camera where possible, else identically to the
+// preview (CSS scale) and to the recorded canvas (crop).
 const ZOOM_LEVELS = [1, 1.5, 2] as const;
 const DEFAULT_ZOOM = 1.5;
+// Camera frames normally arrive every 33 ms. Past this the draw loop counts as stalled
+// and the watchdog repaints the last frame so the recording keeps its timeline.
+const STALL_MS = 250;
+const MAX_EVENTS = 30;
 
-export type Capture = { file: File; thumbnail: string; durationSeconds: number };
+type ZoomCaps = MediaTrackCapabilities & { zoom?: { min?: number; max?: number } };
+type ZoomSettings = MediaTrackSettings & { zoom?: number };
+
+export type Capture = { file: File; thumbnail: string; durationSeconds: number; meta?: CaptureMeta };
 
 /**
  * Multi-clip camera recorder. Tap the red button to start a clip, tap again to end
@@ -54,8 +69,13 @@ export default function VideoRecorder({
   const introTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawRafRef = useRef<number | null>(null);
+  const watchdogRef = useRef<number | null>(null);
   const canvasStreamRef = useRef<MediaStream | null>(null);
   const clipsRef = useRef<Clip[]>([]);
+  // Field diagnostics, uploaded with the video (CaptureMeta): reviewers see them.
+  const diagRef = useRef({ camera: "", recorded: "", events: [] as string[], frames: 0, repaints: 0 });
+  // The zoom level the camera itself is applying, or null when the canvas crops.
+  const nativeZoomRef = useRef<number | null>(null);
 
   const [cam, setCam] = useState<"idle" | "live" | "recording" | "error">("idle");
   const [clips, setClips] = useState<Clip[]>([]);
@@ -66,9 +86,23 @@ export default function VideoRecorder({
   const [merging, setMerging] = useState(false);
   const [showScript, setShowScript] = useState(true);
   const [zoom, setZoom] = useState<number>(DEFAULT_ZOOM);
+  const [zoomMode, setZoomMode] = useState<ZoomMode>("canvas");
   const zoomRef = useRef<number>(DEFAULT_ZOOM);
   zoomRef.current = zoom;
+  // With the camera zooming, the preview and the canvas use the frame as is.
+  const cropZoom = zoomMode === "native" ? 1 : zoom;
+  const cropZoomRef = useRef(cropZoom);
+  cropZoomRef.current = cropZoom;
   clipsRef.current = clips;
+
+  function logEvent(what: string) {
+    const d = diagRef.current;
+    if (d.events.length >= MAX_EVENTS) return;
+    const rec = recorderRef.current?.state === "recording";
+    const at = rec ? `${((Date.now() - clipStartRef.current) / 1000).toFixed(1)}s into clip ${clipIdRef.current + 1}` : "between clips";
+    d.events.push(`${at}: ${what}`);
+    console.debug(`[recorder] ${at}: ${what}`);
+  }
 
   function stopDrawing() {
     if (drawRafRef.current !== null) {
@@ -77,6 +111,7 @@ export default function VideoRecorder({
       cancelAnimationFrame(drawRafRef.current);
       drawRafRef.current = null;
     }
+    if (watchdogRef.current !== null) { clearInterval(watchdogRef.current); watchdogRef.current = null; }
     canvasStreamRef.current?.getTracks().forEach((t) => t.stop());
     canvasStreamRef.current = null;
   }
@@ -89,11 +124,43 @@ export default function VideoRecorder({
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
   }
+  /**
+   * Zoom with the camera itself where the browser exposes it (iOS 17+, Android
+   * Chrome): the sensor does the crop at full quality and the preview follows for
+   * free. Otherwise the canvas crops and the preview is scaled to match. Some webcams
+   * report zoom in device units (100..400), so only plain factors are trusted.
+   */
+  async function applyZoom(level: number) {
+    const track = streamRef.current?.getVideoTracks()[0];
+    const range = track && typeof track.getCapabilities === "function" ? (track.getCapabilities() as ZoomCaps).zoom : undefined;
+    if (track && range && typeof range.min === "number" && typeof range.max === "number" && range.min <= 1 && range.max >= level) {
+      try {
+        await track.applyConstraints({ advanced: [{ zoom: level } as unknown as MediaTrackConstraintSet] });
+        const applied = (track.getSettings() as ZoomSettings).zoom;
+        if (applied !== undefined && Math.abs(applied - level) < 0.05) {
+          nativeZoomRef.current = level;
+          setZoomMode("native");
+          return;
+        }
+      } catch { /* fall through to the canvas crop */ }
+    }
+    if (nativeZoomRef.current !== null && nativeZoomRef.current !== 1) {
+      try { await track?.applyConstraints({ advanced: [{ zoom: 1 } as unknown as MediaTrackConstraintSet] }); } catch { /* ignore */ }
+    }
+    nativeZoomRef.current = null;
+    setZoomMode("canvas");
+  }
   function attach(stream: MediaStream) {
     streamRef.current = stream;
+    for (const t of stream.getTracks()) {
+      t.addEventListener("mute", () => logEvent(`${t.kind} track muted by the system`));
+      t.addEventListener("unmute", () => logEvent(`${t.kind} track unmuted`));
+      t.addEventListener("ended", () => logEvent(`${t.kind} track ended`));
+    }
     const v = videoRef.current;
     if (v) { v.srcObject = stream; v.muted = true; v.play().catch(() => {}); }
     setCam("live");
+    void applyZoom(zoomRef.current);
   }
   async function startCamera() {
     teardown();
@@ -101,6 +168,16 @@ export default function VideoRecorder({
     try {
       attach(await navigator.mediaDevices.getUserMedia(CAMERA));
     } catch { setCam("error"); }
+  }
+  // The preview has no `autoplay` attribute on purpose: iOS pauses autoplaying
+  // elements it decides are off screen (an "invisible autoplay" interruption) and
+  // WebKit bug 230922 froze autoplaying MediaStream elements outright. We start it
+  // ourselves and restart it if the browser pauses it under us.
+  function onPreviewPause() {
+    const v = videoRef.current;
+    if (!v || !streamRef.current || v.srcObject !== streamRef.current) return;
+    logEvent("preview paused by the browser; resuming");
+    v.play().catch(() => {});
   }
 
   useEffect(() => {
@@ -141,7 +218,7 @@ export default function VideoRecorder({
     const ctx = c.getContext("2d");
     if (!ctx) return "";
     ctx.translate(c.width, 0); ctx.scale(-1, 1); // match the mirrored preview
-    ctx.drawImage(v, 0, 0, c.width, c.height);
+    try { ctx.drawImage(v, 0, 0, c.width, c.height); } catch { return ""; }
     return c.toDataURL("image/jpeg", 0.6);
   }
   /**
@@ -168,17 +245,43 @@ export default function VideoRecorder({
     canvas.width = cw; canvas.height = ch;
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
-    console.debug(`[recorder] camera ${sw}×${sh} · recording ${cw}×${ch}`);
-    // Draw on each new camera frame where supported, else every animation frame.
-    // The zoom is read per frame so the control works mid-clip.
-    const rvfc = "requestVideoFrameCallback" in v ? (v as HTMLVideoElement & { requestVideoFrameCallback: (cb: () => void) => number }) : null;
-    const draw = () => {
-      const z = zoomRef.current;
+    diagRef.current.camera = `${sw}x${sh}`;
+    diagRef.current.recorded = `${cw}x${ch}`;
+    console.debug(`[recorder] camera ${sw}×${sh} · recording ${cw}×${ch} · zoom ${zoomRef.current}× by ${nativeZoomRef.current !== null ? "the camera" : "cropping"}`);
+    const paint = () => {
+      const z = cropZoomRef.current;
       const zw = cropW / z, zh = cropH / z;
-      ctx.drawImage(v, sx + (cropW - zw) / 2, sy + (cropH - zh) / 2, zw, zh, 0, 0, cw, ch);
+      try { ctx.drawImage(v, sx + (cropW - zw) / 2, sy + (cropH - zh) / 2, zw, zh, 0, 0, cw, ch); } catch { /* no frame to draw yet */ }
+    };
+    // Draw on each new camera frame where supported, else every animation frame. The
+    // zoom is read per frame so the control works mid-clip. The next callback is armed
+    // before painting so nothing drawImage does can break the chain.
+    const rvfc = "requestVideoFrameCallback" in v ? (v as HTMLVideoElement & { requestVideoFrameCallback: (cb: () => void) => number }) : null;
+    let lastFrameAt = performance.now();
+    let stalled = false;
+    const draw = () => {
       drawRafRef.current = rvfc ? rvfc.requestVideoFrameCallback(draw) : requestAnimationFrame(draw);
+      lastFrameAt = performance.now();
+      if (stalled) { stalled = false; logEvent("camera frames resumed"); }
+      paint();
+      diagRef.current.frames++;
     };
     draw();
+    // Watchdog (2026-09-17): a tester's iPhone stopped delivering frames 8 s before the
+    // end of a 41 s clip while the mic kept going, so the file's video track ended
+    // early and players showed a frozen picture. When frames stop, keep painting the
+    // last one so the recorded track stays in step with the audio, nudge a paused
+    // preview back to playing, and note it for the reviewers.
+    watchdogRef.current = window.setInterval(() => {
+      if (performance.now() - lastFrameAt < STALL_MS) return;
+      if (!stalled) {
+        stalled = true;
+        logEvent(`camera frames stopped (${v.paused ? "preview paused" : v.srcObject ? "no new frames" : "no stream"})`);
+      }
+      if (v.paused && v.srcObject) v.play().catch(() => {});
+      paint();
+      diagRef.current.repaints++;
+    }, 100);
     const canvasStream = canvas.captureStream(30);
     canvasStreamRef.current = canvasStream;
     return new MediaStream([...canvasStream.getVideoTracks(), ...cam.getAudioTracks()]);
@@ -188,18 +291,21 @@ export default function VideoRecorder({
     setError(""); chunksRef.current = []; setSecs(0);
     clipThumbRef.current = captureThumb();
     clipStartRef.current = Date.now();
+    diagRef.current.frames = 0;
     const mime = pickRecorderMimeType();
     mimeRef.current = mime;
     const source = startPortraitCapture() ?? streamRef.current;
     let rec: MediaRecorder;
-    try { rec = new MediaRecorder(source, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: VIDEO_BITRATE }); }
+    try { rec = new MediaRecorder(source, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: VIDEO_BITRATE, audioBitsPerSecond: AUDIO_BITRATE }); }
     catch { stopDrawing(); setError("Recording isn't supported in this browser. Try uploading a file instead."); return; }
     rec.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
     rec.onstop = () => {
       stopDrawing();
       const blob = new Blob(chunksRef.current, { type: baseMimeType(rec.mimeType || mimeRef.current) || "video/webm" });
-      const dur = Math.max(1, Math.round((Date.now() - clipStartRef.current) / 1000));
-      if (blob.size > 0) setClips((cs) => [...cs, { id: ++clipIdRef.current, blob, thumb: clipThumbRef.current, secs: dur }]);
+      const ms = Date.now() - clipStartRef.current;
+      const dur = Math.max(1, Math.round(ms / 1000));
+      const frames = diagRef.current.frames;
+      if (blob.size > 0) setClips((cs) => [...cs, { id: ++clipIdRef.current, blob, thumb: clipThumbRef.current, secs: dur, ms, frames }]);
       setCam("live");
     };
     recorderRef.current = rec;
@@ -222,14 +328,33 @@ export default function VideoRecorder({
     firstClipRef.current = true;
     startCamera();
   }
+  function buildMeta(cs: Clip[]): CaptureMeta {
+    const d = diagRef.current;
+    const ms = cs.reduce((a, c) => a + c.ms, 0);
+    const frames = cs.reduce((a, c) => a + c.frames, 0);
+    return {
+      ua: navigator.userAgent,
+      camera: d.camera || null,
+      recorded: d.recorded || null,
+      codec: mimeRef.current || null,
+      fps: ms > 0 && d.recorded ? Math.round((frames / ms) * 1000) : null,
+      zoom: zoomRef.current,
+      zoomMode: nativeZoomRef.current !== null ? "native" : "canvas",
+      clips: cs.length,
+      merged: cs.length > 1,
+      stalledSeconds: Math.round(d.repaints / 10),
+      events: d.events,
+    };
+  }
   async function done() {
     if (merging || clips.length === 0 || cam === "recording") return;
     const total = clips.reduce((a, c) => a + c.secs, 0);
     const thumbnail = clips[0].thumb;
+    const meta = buildMeta(clips);
     if (clips.length === 1) {
       const type = clips[0].blob.type || "video/webm";
       teardown();
-      onCapture({ file: new File([clips[0].blob], `recording-${Date.now()}.${extensionFor(type)}`, { type }), thumbnail, durationSeconds: total });
+      onCapture({ file: new File([clips[0].blob], `recording-${Date.now()}.${extensionFor(type)}`, { type }), thumbnail, durationSeconds: total, meta });
       return;
     }
     setMerging(true); setError("");
@@ -237,7 +362,7 @@ export default function VideoRecorder({
       const { mergeClips } = await import("@/lib/merge-clips");
       const file = await mergeClips(clips.map((c) => c.blob));
       teardown();
-      onCapture({ file, thumbnail, durationSeconds: total });
+      onCapture({ file, thumbnail, durationSeconds: total, meta });
     } catch {
       setMerging(false);
       setError("Couldn't combine your clips. Try again, or delete a clip.");
@@ -250,7 +375,7 @@ export default function VideoRecorder({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="relative mx-auto flex aspect-[9/16] h-[min(66dvh,170vw)] max-w-full items-center justify-center overflow-hidden rounded-2xl bg-black">
-        <video ref={videoRef} autoPlay muted playsInline className={`h-full w-full object-cover ${cam === "error" ? "hidden" : ""}`} style={{ transform: `scaleX(-1) scale(${zoom})`, transformOrigin: "center" }} />
+        <video ref={videoRef} muted playsInline onPause={onPreviewPause} className={`h-full w-full object-cover ${cam === "error" ? "hidden" : ""}`} style={{ transform: `scaleX(-1) scale(${cropZoom})`, transformOrigin: "center" }} />
         {cam === "error" && (
           <div className="p-4 text-center text-sm leading-relaxed text-neutral-400">
             Camera unavailable.<br />Allow camera access, or upload a file instead.
@@ -269,7 +394,7 @@ export default function VideoRecorder({
         {cam !== "error" && !merging && (
           <div className="absolute right-2 top-1/2 flex -translate-y-1/2 flex-col overflow-hidden rounded-full bg-black/60 text-[11px] font-semibold text-white" role="group" aria-label="Zoom">
             {ZOOM_LEVELS.map((z) => (
-              <button key={z} onClick={() => setZoom(z)} aria-pressed={zoom === z} className={`px-2 py-1.5 ${zoom === z ? "bg-white/25" : ""}`}>{z}×</button>
+              <button key={z} onClick={() => { setZoom(z); void applyZoom(z); }} aria-pressed={zoom === z} className={`px-2 py-1.5 ${zoom === z ? "bg-white/25" : ""}`}>{z}×</button>
             ))}
           </div>
         )}

@@ -4,7 +4,7 @@ Owner: Landon Cope (landon@highpsiproducts.com). Product owner: Travis (non-tech
 Claude owns this repo: language, dependencies, architecture, and this file. Keep CLAUDE.md
 current whenever a decision is made or reversed. Dates below are absolute (YYYY-MM-DD).
 
-## Status (2026-09-15)
+## Status (2026-09-17)
 
 **MVP is live in production at https://assignedtolabor.org.** Landon and Travis are
 admins and are testing. Working and verified: anonymous upload with portrait 9:16
@@ -13,8 +13,11 @@ Instagram posting workflow, admin (areas, managers), Google and magic-link sign-
 cross-device email links, email notifications through Resend (managers, uploaders,
 new reviewers), nightly file purge, branding (wheat-sheaf logo). Travis's first
 feedback round (language step, recorder layout) shipped 2026-09-12; one-tap script
-skip and Turnstile bot protection (enforced in Supabase) shipped 2026-09-15. Next:
-Travis's further testing, his other two areas, then phase-2 Instagram API posting.
+skip and Turnstile bot protection (enforced in Supabase) shipped 2026-09-15; reviewer
+delete and, after a tester's frozen video, the recorder rework (1080p capture, camera
+zoom, raw mic audio, frame watchdog, per-recording diagnostics on the review page)
+shipped 2026-09-17. Next: a real-phone re-test of the recorder, Travis's other two
+areas, then phase-2 Instagram API posting.
 
 ## Account setup (one-time, needs dashboard access)
 
@@ -197,7 +200,7 @@ src/app/                    / landing, /upload flow, /qr poster, /login, /auth/*
 Commands: `npm run dev`, `npm run build`, `npm run lint`, `npm run typecheck`,
 `npm run db:push` (after `npx supabase link --project-ref <ref>`), `npm run db:types`,
 `node scripts/dev/e2e-live.mjs` (live RLS/flow test against the project in `.env.local`;
-21 checks; creates and deletes throwaway users, safe to re-run; needs captcha OFF in
+22 checks; creates and deletes throwaway users, safe to re-run; needs captcha OFF in
 Supabase for the run, and toggling it back on keeps the stored Turnstile secret). `scripts/dev/session-cookie.mjs`
 mints a throwaway admin session cookie; note the Chrome automation permission layer
 refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
@@ -252,15 +255,43 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
     below the frame.
   - The recorder therefore draws each frame into a 9:16 canvas (`startPortraitCapture`
     in `VideoRecorder.tsx`, rVFC-driven, 8 Mbps) and records that: portrait pixels, no
-    rotation metadata, on every device. The camera is asked for 3840x2160 so the
-    digital zoom has pixels to spare: getUserMedia exposes the front camera's full wide
-    field (reads as "0.5x" versus the Camera app), so the canvas crops a centre region
-    (default 1.5x, user-selectable 1x/1.5x/2x) and the preview applies the same zoom
-    with a CSS scale, keeping it WYSIWYG. The capture size is logged to the console
-    (`[recorder] camera WxH · recording WxH`); the on-screen readout was removed
-    2026-09-12 once orientation was settled. Diagnose files with
-    `node scripts/dev/mp4-orientation-check.mjs f.mp4` and by extracting frames with
-    and without `-noautorotate`.
+    rotation metadata, on every device. getUserMedia exposes the front camera's full
+    wide field (reads as "0.5x" versus the Camera app), so the default is a 1.5x zoom
+    (user-selectable 1x/1.5x/2x). Since 2026-09-17 the zoom is applied by the camera
+    itself (`applyConstraints({zoom})`, which WebKit implements with
+    `setVideoZoomFactor` and Android Chrome supports) whenever `getCapabilities().zoom`
+    reports a plain factor range (`min <= 1`, `max >= level`; webcams reporting device
+    units like 100..400 are ignored); otherwise the canvas crops and the preview is
+    CSS-scaled to match. The camera is asked for 1920x1080 (sensor coordinates, so an
+    upright phone gives 1080x1920); it was 3840x2160 until 2026-09-17, when a tester's
+    iPhone ran the 4K pipeline at ~15 fps and stopped delivering camera frames 8 s
+    before the end of a 41 s clip while the mic kept going (video track ended at 32.5 s,
+    audio at 40.8 s; found with ffprobe frame timestamps, see below).
+  - Freeze defences (2026-09-17): the preview `<video>` has no `autoplay` attribute
+    (iOS pauses autoplaying elements it decides are off screen, and WebKit bug 230922
+    froze autoplaying MediaStream elements outright); `play()` is called by us and again
+    on any `pause` event. The rVFC callback is re-armed before `drawImage` so a throw
+    cannot break the chain. A 100 ms watchdog repaints the last frame when no new frame
+    arrived for 250 ms, so the recorded video track can never end before the audio, and
+    it logs the stall. Track `mute`/`unmute`/`ended` events are logged too.
+  - Audio (2026-09-17, tester: "sounds worse than my phone's camera"): the mic is
+    requested with `echoCancellation`, `noiseSuppression` and `autoGainControl` all
+    false. On iOS the default (echo cancellation on) selects WebKit's voice-processing
+    audio unit, i.e. phone-call audio; with it off WebKit uses a plain non-VPIO unit
+    (confirmed in `CoreAudioCaptureSource.cpp`). Nothing plays back while recording, so
+    there is no echo to cancel. `audioBitsPerSecond` is 192 kbps (iOS already gave
+    ~186 kbps AAC mono; Chrome's default is lower).
+  - Diagnostics: every recording uploads `videos.capture_meta` (type `CaptureMeta` in
+    `src/lib/capture-meta.ts`): device/browser from the UA, camera frame size, canvas
+    size, codec, achieved fps, zoom and whether the camera or the canvas did it, clip
+    count, seconds of repeated frames, and timestamped events (frames stopped/resumed,
+    preview paused, track muted). The review page prints it under the uploader line, so
+    the next "it froze" report can be read there instead of pulling the file apart.
+    The capture size is also logged to the console (`[recorder] camera WxH …`).
+    Diagnose files with `node scripts/dev/mp4-orientation-check.mjs f.mp4`, by
+    extracting frames with and without `-noautorotate`, and with
+    `ffprobe -select_streams v:0 -show_entries frame=pts_time` (compare the last video
+    pts with the last audio packet pts; a video track that ends early plays as a freeze).
   - Full-flow test with a fake camera (exercises the portrait crop, merge, and upload
     through the real UI): build, `npx next start -p 3001`, then
     `node scripts/dev/headless-upload-flow.mjs http://127.0.0.1:3001 fake-cam.y4m`

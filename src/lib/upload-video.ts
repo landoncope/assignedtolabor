@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { baseMimeType } from "@/lib/merge-clips";
+import type { CaptureMeta } from "@/lib/capture-meta";
 import type { Script } from "@/lib/types";
 
 export const MAX_VIDEO_BYTES = 500 * 1024 * 1024;
@@ -12,6 +13,8 @@ export type UploadFields = {
   uploaderNote?: string | null;
   thumbnail?: string | null;
   durationSeconds?: number | null;
+  /** Recorder diagnostics; null for uploaded files. */
+  captureMeta?: CaptureMeta | null;
 };
 
 /**
@@ -68,6 +71,7 @@ export async function uploadVideo(
         script: fields.script,
         uploader_name: fields.uploaderName ?? null,
         uploader_note: fields.uploaderNote ?? null,
+        capture_meta: fields.captureMeta ?? null,
       })
       .select("id")
       .single();

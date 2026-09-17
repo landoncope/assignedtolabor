@@ -95,6 +95,7 @@ export default function UploadFlow({ areas }: { areas: Area[] }) {
         uploaderName: name.trim() || null,
         thumbnail: capture.thumbnail || null,
         durationSeconds: capture.durationSeconds || null,
+        captureMeta: capture.meta ?? null,
       }, setProgress);
       setUploading(false);
       go("done");

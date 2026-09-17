@@ -5,6 +5,7 @@ import Nav from "@/components/Nav";
 import VideoPlayer from "@/components/VideoPlayer";
 import { requireManager } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { describeCapture } from "@/lib/capture-meta";
 import { areaLabel, STATUS_LABEL, type Area, type VideoWithArea } from "@/lib/types";
 import ReviewActions from "./ReviewActions";
 
@@ -40,6 +41,17 @@ export default async function ReviewVideoPage({ params }: PageProps<"/review/[id
                 From {v.uploader_name ?? "Anonymous"}{v.language ? ` · speaks ${v.language}` : ""} · {new Date(v.created_at).toLocaleString()}
                 {v.duration_seconds ? ` · ${v.duration_seconds}s` : ""}{v.file_size ? ` · ${(v.file_size / 1048576).toFixed(1)} MB` : ""}
               </p>
+              {v.capture_meta && (
+                <div className="mt-2 text-xs text-muted">
+                  <p>Recorded on {describeCapture(v.capture_meta)}.</p>
+                  {v.capture_meta.events.length > 0 && (
+                    <ul className="mt-1 list-disc pl-4">
+                      {v.capture_meta.events.slice(0, 8).map((e, i) => <li key={i}>{e}</li>)}
+                      {v.capture_meta.events.length > 8 && <li>and {v.capture_meta.events.length - 8} more</li>}
+                    </ul>
+                  )}
+                </div>
+              )}
             </div>
             {caption ? (
               <div className="card">

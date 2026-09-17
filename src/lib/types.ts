@@ -20,6 +20,8 @@ export type Area = {
   created_at: string;
 };
 
+import type { CaptureMeta } from "@/lib/capture-meta";
+
 export type Script = { hook: string | null; body: string | null; cta: string | null };
 
 export type Video = {
@@ -44,6 +46,7 @@ export type Video = {
   posted_at: string | null;
   post_url: string | null;
   file_purged_at: string | null;
+  capture_meta: CaptureMeta | null;
   created_at: string;
 };
 
