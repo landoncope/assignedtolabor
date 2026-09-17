@@ -10,9 +10,9 @@ export default function RequestsClient({ requests, isAdmin }: { requests: Reques
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
   const [notes, setNotes] = useState<Record<string, string>>({});
-  function decide(id: string, approve: boolean) {
+  function decide(id: string, approve: boolean, asLead = false) {
     setError("");
-    start(async () => { const r = await decideApplication(id, approve, notes[id] ?? ""); if ("error" in r && r.error) setError(r.error); });
+    start(async () => { const r = await decideApplication(id, approve, notes[id] ?? "", asLead); if ("error" in r && r.error) setError(r.error); });
   }
   const joins = requests.filter((r) => r.kind === "join");
   const starts = requests.filter((r) => r.kind === "start");
@@ -21,14 +21,15 @@ export default function RequestsClient({ requests, isAdmin }: { requests: Reques
   const card = (r: Request) => (
     <li key={r.id} className="card">
       <div className="font-semibold">
-        {r.kind === "join" ? <>{who(r)} wants to join <b>{areaLabel(r.area)}</b></> : <>{who(r)} wants to start <b>{r.team_name}</b></>}
+        {r.kind === "join" ? <>{who(r)} wants to join <b>{areaLabel(r.area)}</b>{r.wants_lead && <> and <b>lead it</b></>}</> : <>{who(r)} wants to start <b>{r.team_name}</b></>}
       </div>
       {r.kind === "start" && <div className="mt-1 text-sm text-muted">{r.language}{r.region ? ` · ${r.region}` : ""}{r.instagram_handle ? ` · @${r.instagram_handle}` : ""}</div>}
       {r.note && <p className="mt-2 whitespace-pre-line text-sm">{r.note}</p>}
       <div className="mt-1 text-xs text-muted">Sent {new Date(r.created_at).toLocaleString()}</div>
       <input className="input mt-3" placeholder="Optional note back to them" value={notes[r.id] ?? ""} onChange={(e) => setNotes((n) => ({ ...n, [r.id]: e.target.value }))} />
-      <div className="mt-2 flex gap-2">
-        <button onClick={() => decide(r.id, true)} disabled={pending} className="btn-primary flex-1">{r.kind === "join" ? "Add to the team" : "Create the team"}</button>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <button onClick={() => decide(r.id, true)} disabled={pending} className="btn-primary flex-1">{r.kind === "join" ? "Add as a member" : "Create the team"}</button>
+        {r.kind === "join" && isAdmin && <button onClick={() => decide(r.id, true, true)} disabled={pending} className="btn-secondary flex-1">Add as a team lead</button>}
         <button onClick={() => decide(r.id, false)} disabled={pending} className="btn-danger flex-1">Decline</button>
       </div>
     </li>

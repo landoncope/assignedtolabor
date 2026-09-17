@@ -63,13 +63,14 @@ export async function assignArea(videoId: string, areaId: string | null) {
 
 /**
  * Approve or decline a team application. The database function checks who may
- * decide (leads for join requests to their teams, admins for new teams) and creates
- * the membership or the team in the same transaction.
+ * decide (leads for join requests to their teams, admins for new teams and for
+ * approving someone as a lead) and creates the membership or the team in the same
+ * transaction.
  */
-export async function decideApplication(id: string, approve: boolean, note: string) {
+export async function decideApplication(id: string, approve: boolean, note: string, asLead = false) {
   await requireManager("/review/requests");
   const supabase = await createClient();
-  const { error } = await supabase.rpc("decide_team_application", { app_id: id, approve, note: note.trim() || null });
+  const { error } = await supabase.rpc("decide_team_application", { app_id: id, approve, note: note.trim() || null, as_lead: asLead });
   if (error) return { error: error.message };
   for (const p of ["/review/requests", "/review", "/admin", "/my/teams"]) revalidatePath(p);
   return { ok: true };

@@ -73,7 +73,9 @@ re-test of the recorder, the event, then phase-2 Instagram API posting.
    domain stops; the supabase.co hostname keeps working regardless.
 6. Seed data lives in `supabase/seeds/` (applied by hand with psql, re-runnable).
    Philippines / Tagalog with Instagram `Liwinag.ni.kristo` and manager invite
-   `holyrebellionph@gmail.com` were seeded 2026-09-10.
+   `holyrebellionph@gmail.com` were seeded 2026-09-10. English, Spanish, French and
+   Swahili (language-only teams, no leads yet) were seeded 2026-09-17 at Travis's
+   request for the Saturday event; their leads apply from the Teams page.
 
 ## What this is
 
@@ -200,8 +202,10 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
 
 ## Open questions (Landon is asking Travis)
 
-1. West Africa / French and East Africa / Swahili: Instagram handles and manager emails
-   (Philippines is done). Travis confirmed the accounts are linked to a Facebook Page.
+1. Instagram handles for the English, Spanish, French and Swahili teams (Travis,
+   2026-09-17: the leads will apply through the Teams page; admins approve them as
+   leads). Philippines' lead is Brady Gordon per Travis (2026-09-17), who is getting an
+   account; the seeded lead `holyrebellionph@gmail.com` ("Christian") is still a lead.
 
 ## Codebase
 
@@ -228,7 +232,7 @@ src/app/                    / landing, /upload flow, /qr poster, /login, /auth/*
 Commands: `npm run dev`, `npm run build`, `npm run lint`, `npm run typecheck`,
 `npm run db:push` (after `npx supabase link --project-ref <ref>`), `npm run db:types`,
 `node scripts/dev/e2e-live.mjs` (live RLS/flow test against the project in `.env.local`;
-40 checks incl. teams and the stranded-upload claim (it sets `auth.users.email_change`
+44 checks incl. teams, join-as-lead and the stranded-upload claim (it sets `auth.users.email_change`
 with `psql` via `SUPABASE_DB_URL` from `.env.local`); creates and deletes throwaway
 users and a Klingon test team, safe to re-run; needs captcha OFF in
 Supabase for the run, and toggling it back on keeps the stored Turnstile secret). `scripts/dev/session-cookie.mjs`
@@ -251,7 +255,13 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
   from `/review` and `/admin`). Decisions go through the security-definer function
   `decide_team_application(app_id, approve, note)`, which checks who may decide and
   creates the membership, or the team plus its lead (+ member), in the same
-  transaction; there is no update policy on the table. Leads can read the profiles
+  transaction; there is no update policy on the table. A join request can carry
+  `wants_lead` ("I'd like to lead this team"); only an admin can approve a join
+  request `as_lead` (4th argument), which also inserts `area_managers` with
+  `notified_at` set so the approval email is the one that says "you are now a lead".
+  Proposing a team whose language an active team already covers is refused by the
+  server action (one team per language keeps language routing unambiguous); the
+  applicant is told to ask to join it as a lead instead. Leads can read the profiles
   of applicants to and members of their teams (`profiles_select_for_leads`). Uploads:
   signed-in members (and leads) see their teams as tick-boxes on the language step
   (`myTeams` from `src/app/upload/page.tsx`); a ticked team sets `area_id` directly and

@@ -23,7 +23,7 @@ export default function TeamsClient({ areas, memberships, leadAreaIds, applicati
   const leadAreas = areas.filter((a) => leadAreaIds.includes(a.id));
   const hasOpenStart = applications.some((a) => a.kind === "start" && a.status === "pending");
   const label = (a: ApplicationWithArea) =>
-    a.kind === "join" ? `Join ${areaLabel(a.area)}` : `Start ${a.team_name}${a.language ? ` · ${a.language}` : ""}${a.region ? ` · ${a.region}` : ""}`;
+    a.kind === "join" ? `Join ${areaLabel(a.area)}${a.wants_lead ? " as a lead" : ""}` : `Start ${a.team_name}${a.language ? ` · ${a.language}` : ""}${a.region ? ` · ${a.region}` : ""}`;
 
   return (
     <div className="mt-6 flex flex-col gap-8">
@@ -86,6 +86,7 @@ export default function TeamsClient({ areas, memberships, leadAreaIds, applicati
                 </select>
               </label>
               <label><span className="label">A few words about you (optional)</span><textarea name="note" className="input min-h-20" placeholder="Where you are and how you'd like to help" /></label>
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="wants_lead" /> I&apos;d like to lead this team (an admin decides)</label>
               <div className="flex gap-2">
                 <button className="btn-primary" disabled={pending || joinable.length === 0}>Send request</button>
                 <button type="button" onClick={() => setJoinOpen(false)} className="btn-secondary">Cancel</button>
@@ -97,7 +98,7 @@ export default function TeamsClient({ areas, memberships, leadAreaIds, applicati
         </div>
         <div className="card">
           <h2 className="font-semibold">Start a team</h2>
-          <p className="mt-1 text-sm text-muted">Propose a team for a language and a place. An admin decides, and you would be its lead.</p>
+          <p className="mt-1 text-sm text-muted">Propose a team for a language that has none yet. An admin decides, and you would be its lead. To lead an existing team, ask to join it instead.</p>
           {startOpen ? (
             <form action={(fd) => run(() => applyToStart(fd), () => setStartOpen(false))} className="mt-3 flex flex-col gap-2">
               <label><span className="label">Team name</span><input name="team_name" className="input" placeholder="Philippines" required /></label>

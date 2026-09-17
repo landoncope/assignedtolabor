@@ -130,11 +130,11 @@ export async function GET(request: NextRequest) {
   // 4. Team requests, grouped per decider.
   const { data: newApps } = await db
     .from("team_applications")
-    .select("id, kind, area_id, team_name, language, region, note, area:areas(name, language), profile:profiles!team_applications_user_id_fkey(email, display_name)")
+    .select("id, kind, area_id, team_name, language, region, note, wants_lead, area:areas(name, language), profile:profiles!team_applications_user_id_fkey(email, display_name)")
     .eq("status", "pending")
     .is("notified_at", null)
     .order("created_at");
-  type NewApp = { id: string; kind: "start" | "join"; area_id: string | null; team_name: string | null; language: string | null; region: string | null; note: string | null; area: { name: string; language: string } | null; profile: { email: string | null; display_name: string | null } | null };
+  type NewApp = { id: string; kind: "start" | "join"; area_id: string | null; team_name: string | null; language: string | null; region: string | null; note: string | null; wants_lead: boolean; area: { name: string; language: string } | null; profile: { email: string | null; display_name: string | null } | null };
   const who = (p: NewApp["profile"]) => (p?.display_name ? `${p.display_name} (${p.email ?? "no email"})` : p?.email ?? "Someone");
   const appsByRecipient = new Map<string, NewApp[]>();
   for (const a of (newApps ?? []) as unknown as NewApp[]) {
@@ -148,7 +148,7 @@ export async function GET(request: NextRequest) {
   }
   for (const [to, list] of appsByRecipient) {
     const lines = list.map((a) => a.kind === "join"
-      ? `<b>${who(a.profile)}</b> wants to join ${areaLabel(a.area)}${a.note ? `: “${a.note}”` : ""}`
+      ? `<b>${who(a.profile)}</b> wants to join ${areaLabel(a.area)}${a.wants_lead ? " <b>and lead it</b> (an admin decides that)" : ""}${a.note ? `: “${a.note}”` : ""}`
       : `<b>${who(a.profile)}</b> wants to start a team: ${a.team_name} · ${a.language}${a.region ? ` · ${a.region}` : ""}${a.note ? `: “${a.note}”` : ""}`);
     await deliver(
       "team_application",
@@ -172,11 +172,11 @@ export async function GET(request: NextRequest) {
   // 5. Outcomes for applicants.
   const { data: decided } = await db
     .from("team_applications")
-    .select("id, kind, status, area_id, team_name, decision_note, area:areas(name, language), profile:profiles!team_applications_user_id_fkey(email)")
+    .select("id, kind, status, area_id, user_id, team_name, decision_note, area:areas(name, language), profile:profiles!team_applications_user_id_fkey(email)")
     .in("status", ["approved", "declined"])
     .is("outcome_notified_at", null)
     .limit(200);
-  type Decided = { id: string; kind: "start" | "join"; status: "approved" | "declined"; area_id: string | null; team_name: string | null; decision_note: string | null; area: { name: string; language: string } | null; profile: { email: string | null } | null };
+  type Decided = { id: string; kind: "start" | "join"; status: "approved" | "declined"; area_id: string | null; user_id: string; team_name: string | null; decision_note: string | null; area: { name: string; language: string } | null; profile: { email: string | null } | null };
   for (const a of (decided ?? []) as unknown as Decided[]) {
     const mark = async () => { await db.from("team_applications").update({ outcome_notified_at: new Date().toISOString() }).eq("id", a.id); };
     const email = a.profile?.email;
@@ -185,9 +185,14 @@ export async function GET(request: NextRequest) {
     const note = a.decision_note ? [`Their note: ${a.decision_note}`] : [];
     let m: Outgoing;
     if (a.kind === "join" && a.status === "approved") {
-      m = { to: email, subject: `You are on the ${team} team`, heading: `Welcome to ${team}`,
-        paragraphs: ["The team lead added you.", "When you record a video, pick the team on the language step and it goes straight to the lead.", ...note],
-        cta: { label: "Record a video", href: `${siteUrl}/upload` } };
+      const { data: leadRow } = a.area_id ? await db.from("area_managers").select("user_id").eq("area_id", a.area_id).eq("user_id", a.user_id).maybeSingle() : { data: null };
+      m = leadRow
+        ? { to: email, subject: `You are now a lead for ${team}`, heading: `You are now a lead for ${team}`,
+            paragraphs: ["An admin made you a team lead.", "Videos sent to the team land in your review queue, and people asking to join it wait for you under Team requests.", ...note],
+            cta: { label: "Open the review queue", href: `${siteUrl}/review` } }
+        : { to: email, subject: `You are on the ${team} team`, heading: `Welcome to ${team}`,
+            paragraphs: ["The team lead added you.", "When you record a video, pick the team on the language step and it goes straight to the lead.", ...note],
+            cta: { label: "Record a video", href: `${siteUrl}/upload` } };
     } else if (a.kind === "join") {
       m = { to: email, subject: `About your request to join ${team}`, heading: `About your request to join ${team}`,
         paragraphs: ["The team lead did not add you this time.", ...note, "You are welcome to record videos on your own, and to ask again later."],

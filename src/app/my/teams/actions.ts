@@ -13,9 +13,10 @@ export async function applyToJoin(form: FormData): Promise<Result> {
   const v = await requireUser("/my/teams");
   const areaId = String(form.get("area_id") ?? "");
   const note = String(form.get("note") ?? "").trim() || null;
+  const wants_lead = form.get("wants_lead") === "on";
   if (!areaId) return { error: "Pick a team." };
   const supabase = await createClient();
-  const { error } = await supabase.from("team_applications").insert({ user_id: v.userId, kind: "join", area_id: areaId, note });
+  const { error } = await supabase.from("team_applications").insert({ user_id: v.userId, kind: "join", area_id: areaId, note, wants_lead });
   return error ? { error: friendly(error.code, error.message) } : done();
 }
 
@@ -29,6 +30,10 @@ export async function applyToStart(form: FormData): Promise<Result> {
   const note = String(form.get("note") ?? "").trim() || null;
   if (!team_name || !language) return { error: "A team name and a language are required." };
   const supabase = await createClient();
+  // One team per language keeps language routing unambiguous; would-be leads of an
+  // existing team ask to join it and tick "I'd like to lead this team" instead.
+  const { data: existing } = await supabase.from("areas").select("name").eq("is_active", true).ilike("language", language).limit(1);
+  if (existing?.length) return { error: `There is already a ${existing[0].name} team for ${language}. Ask to join it and tick "I'd like to lead this team".` };
   const { error } = await supabase.from("team_applications").insert({ user_id: v.userId, kind: "start", team_name, language, region, instagram_handle, note });
   return error ? { error: friendly(error.code, error.message) } : done();
 }

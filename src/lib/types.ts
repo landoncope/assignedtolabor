@@ -66,6 +66,8 @@ export type TeamApplication = {
   region: string | null;
   instagram_handle: string | null;
   note: string | null;
+  /** Join requests only: the applicant would like to lead the team (an admin decides). */
+  wants_lead: boolean;
   status: ApplicationStatus;
   decided_by: string | null;
   decided_at: string | null;

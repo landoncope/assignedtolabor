@@ -100,6 +100,19 @@ try {
   ok("approval created the team with the applicant as its lead", newArea?.length === 1 && newLead?.length === 1 && !!newLead[0].notified_at);
   const { error: againErr } = await admClient.rpc("decide_team_application", { app_id: startApp.id, approve: false, note: null });
   ok("a decided request cannot be decided again", !!againErr, againErr?.message);
+  const leadEmail = `lead-${Date.now()}@example.com`;
+  const { data: lu } = await admin.auth.admin.createUser({ email: leadEmail, password: "Testpass-123", email_confirm: true }); created.push(lu.user.id);
+  const leadClient = createClient(URL, ANON, { auth: { persistSession: false } });
+  await leadClient.auth.signInWithPassword({ email: leadEmail, password: "Testpass-123" });
+  const { data: leadApp, error: leadAppErr } = await leadClient.from("team_applications").insert({ user_id: lu.user.id, kind: "join", area_id: areas[0].id, wants_lead: true, note: "e2e lead" }).select("id").single();
+  ok("a would-be lead can ask to join and lead a team", !leadAppErr && !!leadApp?.id, leadAppErr?.message);
+  const { error: mgrAsLead } = await mgr.rpc("decide_team_application", { app_id: leadApp.id, approve: true, note: null, as_lead: true });
+  ok("a team lead cannot make someone a lead", !!mgrAsLead, mgrAsLead?.message);
+  const { error: admAsLead } = await admClient.rpc("decide_team_application", { app_id: leadApp.id, approve: true, note: null, as_lead: true });
+  ok("admin approves the request as a lead", !admAsLead, admAsLead?.message);
+  const { data: leadRows } = await admin.from("area_managers").select("user_id, notified_at").eq("area_id", areas[0].id).eq("user_id", lu.user.id);
+  const { data: leadMember } = await admin.from("area_members").select("user_id").eq("area_id", areas[0].id).eq("user_id", lu.user.id);
+  ok("approval as lead made them a lead and a member", leadRows?.length === 1 && !!leadRows[0].notified_at && leadMember?.length === 1);
 
   // 5. stranded uploads: an anonymous upload whose pending (unconfirmed) email matches a signed-in account
   const { data: anonVid, error: anonVidErr } = await anon.from("videos").insert({ user_id: a.user.id, uploader_name: "Stranded", language: "English" }).select("id").single();

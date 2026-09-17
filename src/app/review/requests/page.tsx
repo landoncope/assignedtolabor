@@ -26,7 +26,7 @@ export default async function RequestsPage() {
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
         <Link href="/review" className="text-sm text-muted hover:text-foreground">‹ Back to review</Link>
         <h1 className="mt-4 text-2xl font-bold">Team requests</h1>
-        <p className="mt-1 text-sm text-muted">{viewer.isAdmin ? "People asking to join a team, and proposals for new teams." : "People asking to join the teams you lead."}</p>
+        <p className="mt-1 text-sm text-muted">{viewer.isAdmin ? "People asking to join a team, and proposals for new teams. Only admins can add someone as a lead." : "People asking to join the teams you lead. Ask an admin to add someone as a lead."}</p>
         <RequestsClient requests={requests} isAdmin={viewer.isAdmin} />
       </main>
     </>
