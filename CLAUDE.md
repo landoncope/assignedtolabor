@@ -44,12 +44,27 @@ re-test of the recorder, the event, then phase-2 Instagram API posting.
    typing a new value, which Claude does not do. `RESEND_API_KEY` is a Secret.
 3. Google Cloud DONE 2026-09-10: project `assigned-to-labor-508202`, OAuth consent
    published to production (External), web client "Supabase Auth" with redirect
-   `https://zyqualxehxopcvkqdjlo.supabase.co/auth/v1/callback`. Branding links to
-   `/privacy` and `/terms` on assignedtolabor.org (pages exist in the app).
+   `https://zyqualxehxopcvkqdjlo.supabase.co/auth/v1/callback` and, since 2026-09-17,
+   `https://api.assignedtolabor.org/auth/v1/callback` too. Branding links to
+   `/privacy` and `/terms` on assignedtolabor.org (pages exist in the app). The
+   consent screen shows the callback DOMAIN, not the app name, until Google's brand
+   verification is done (2-3 business days, submitted from Google Auth Platform ->
+   Branding); with the custom domain it reads api.assignedtolabor.org instead of the
+   supabase.co address a tester flagged.
 4. Namecheap DONE 2026-09-10 (Namecheap BasicDNS, both domains): `A @ 216.150.1.1`
    and `CNAME www 8a4deef4ce3f28c8.vercel-dns-016.com`. The default parking records
    were removed. Namecheap's locked SPF TXT record remains (harmless).
-5. Seed data lives in `supabase/seeds/` (applied by hand with psql, re-runnable).
+5. Supabase custom domain DONE 2026-09-17 (tester Braydon: the Google consent screen
+   named zyqualxehxopcvkqdjlo.supabase.co): add-on "Custom Domain" ($10/month),
+   `api.assignedtolabor.org` with `CNAME api -> zyqualxehxopcvkqdjlo.supabase.co` and
+   `TXT _acme-challenge.api` at Namecheap (verification took ~15 minutes after the
+   records were public; Supabase's resolver had cached the miss). Active and serving:
+   REST/Auth/Storage answer on both hostnames; the app uses the custom one
+   (`NEXT_PUBLIC_SUPABASE_URL=https://api.assignedtolabor.org` in Vercel and
+   `.env.local`). Switching the URL changed the auth cookie name (@supabase/ssr derives
+   it from the hostname), so everyone was signed out once. Delete the CNAME and the
+   domain stops; the supabase.co hostname keeps working regardless.
+6. Seed data lives in `supabase/seeds/` (applied by hand with psql, re-runnable).
    Philippines / Tagalog with Instagram `Liwinag.ni.kristo` and manager invite
    `holyrebellionph@gmail.com` were seeded 2026-09-10.
 
