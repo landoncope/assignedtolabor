@@ -48,9 +48,15 @@ re-test of the recorder, the event, then phase-2 Instagram API posting.
    `https://api.assignedtolabor.org/auth/v1/callback` too. Branding links to
    `/privacy` and `/terms` on assignedtolabor.org (pages exist in the app). The
    consent screen shows the callback DOMAIN, not the app name, until Google's brand
-   verification is done (2-3 business days, submitted from Google Auth Platform ->
-   Branding); with the custom domain it reads api.assignedtolabor.org instead of the
-   supabase.co address a tester flagged.
+   verification is done; with the custom domain it reads api.assignedtolabor.org
+   instead of the supabase.co address a tester flagged. Brand verification (Google
+   Auth Platform -> Branding -> Verify branding) was submitted 2026-09-17. Its one
+   prerequisite was Search Console ownership of the home page: the URL-prefix
+   property `https://assignedtolabor.org/` is verified for landoncope@gmail.com by
+   the meta tag in `src/app/layout.tsx` (`metadata.verification.google`; keep it).
+   A Domain property via DNS was attempted first but Namecheap's session had expired
+   mid-way and "Failed to save record" was the only symptom; the CNAME/TXT it wanted
+   were never saved and are not needed.
 4. Namecheap DONE 2026-09-10 (Namecheap BasicDNS, both domains): `A @ 216.150.1.1`
    and `CNAME www 8a4deef4ce3f28c8.vercel-dns-016.com`. The default parking records
    were removed. Namecheap's locked SPF TXT record remains (harmless).
