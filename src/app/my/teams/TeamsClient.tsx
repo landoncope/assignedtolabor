@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { LANGUAGE_SUGGESTIONS } from "@/lib/languages";
 import { APPLICATION_STATUS_LABEL, areaLabel, type Area, type AreaSummary, type TeamApplication } from "@/lib/types";
 import { applyToJoin, applyToStart, leaveTeam, withdrawApplication } from "./actions";
 
@@ -104,8 +103,7 @@ export default function TeamsClient({ areas, memberships, leadAreaIds, applicati
               <label><span className="label">Team name</span><input name="team_name" className="input" placeholder="Philippines" required /></label>
               <label>
                 <span className="label">Language</span>
-                <input name="language" className="input" list="team-languages" placeholder="Tagalog" required autoComplete="off" />
-                <datalist id="team-languages">{LANGUAGE_SUGGESTIONS.map((l) => <option key={l} value={l} />)}</datalist>
+                <input name="language" className="input" placeholder="Tagalog, Swahili, Spanish…" required autoComplete="off" autoCapitalize="words" />
               </label>
               <label><span className="label">Where in the world</span><input name="region" className="input" placeholder="Manila, Philippines" /></label>
               <label><span className="label">Instagram account, if the team has one</span><input name="instagram_handle" className="input" placeholder="@handle" /></label>

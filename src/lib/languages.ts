@@ -1,10 +1,3 @@
-/** Suggestions for the "what language will you speak" step. Free text is allowed. */
-export const LANGUAGE_SUGGESTIONS = [
-  "English", "Spanish", "Portuguese", "French", "Tagalog", "Cebuano", "Ilocano", "Swahili",
-  "Korean", "Japanese", "Mandarin Chinese", "Cantonese", "Vietnamese", "Thai", "Indonesian",
-  "Hindi", "Samoan", "Tongan", "German", "Italian", "Russian", "Ukrainian", "Arabic",
-];
-
 export function normalizeLanguage(s: string): string {
   return s.trim().replace(/\s+/g, " ");
 }

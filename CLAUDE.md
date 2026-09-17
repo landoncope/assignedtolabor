@@ -206,8 +206,9 @@ src/app/                    / landing, /upload flow, /qr poster, /login, /auth/*
 Commands: `npm run dev`, `npm run build`, `npm run lint`, `npm run typecheck`,
 `npm run db:push` (after `npx supabase link --project-ref <ref>`), `npm run db:types`,
 `node scripts/dev/e2e-live.mjs` (live RLS/flow test against the project in `.env.local`;
-34 checks incl. teams; creates and deletes throwaway users and a Klingon test team,
-safe to re-run; needs captcha OFF in
+40 checks incl. teams and the stranded-upload claim (it sets `auth.users.email_change`
+with `psql` via `SUPABASE_DB_URL` from `.env.local`); creates and deletes throwaway
+users and a Klingon test team, safe to re-run; needs captcha OFF in
 Supabase for the run, and toggling it back on keeps the stored Turnstile secret). `scripts/dev/session-cookie.mjs`
 mints a throwaway admin session cookie; note the Chrome automation permission layer
 refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
@@ -238,11 +239,17 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
   `application_outcome` to the applicant; a newly created team's lead gets the
   approval email only (`area_managers.notified_at` is set by the function).
 - `areas` = name + language + optional `instagram_handle`. Since 2026-09-12 (Travis's
-  feedback) uploaders do not pick a team: they type the language they will speak
-  (`videos.language`, free text with suggestions from `src/lib/languages.ts`). The
-  client assigns `area_id` to the single active area with that language
-  (`areaForLanguage`); no match or several matches leaves it null = admin queue, and
-  reviewers assign the area on the review page.
+  feedback) uploaders do not pick a team: they say the language they will speak
+  (`videos.language`). Since 2026-09-17 (tester Braydon: iOS drew the old free-text
+  datalist as a dropdown that never opened; Landon: prefer a short list) the language
+  step is a list of options: a member's own team(s) first ("My team · …", the default
+  for members per Travis), then English, then the languages existing teams cover, then
+  "Another language" with a text box. The starting pick follows the phone's language
+  (`navigator.language` via `Intl.DisplayNames`; `fil`/`tl` = Tagalog): a covered
+  language is preselected, an uncovered one prefills "Another language", else English.
+  A team option sets `area_id` directly; a language routes to the single active area
+  with that language (`areaForLanguage`), else null = admin queue, and reviewers
+  assign the team on the review page.
 - Script builder (hook / body / CTA) is optional at every level: each step has
   "I'll improvise this part", the first step has "Skip the script, I know what I'll
   say" and the second "Skip the rest of the script", both jumping to the language
@@ -354,6 +361,15 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
 - Anonymous upload: `signInAnonymously()` on submit; "Keep me posted" calls
   `updateUser({email})`, which turns the same user into a real account after they
   confirm. Anonymous sessions are redirected away from /review and /admin but may see /my.
+- Stranded uploads (2026-09-17): two of two testers typed their email on the
+  thank-you screen and then tapped "Sign in" instead of the confirmation link, which
+  made a new, empty account while the video stayed with the anonymous user (whose
+  `auth.users.email_change` still holds the typed address). `/my` now calls
+  `claimable_uploads()` (security definer: videos of anonymous users whose pending
+  email equals the caller's confirmed email, not yet declined) and shows "Is this
+  yours?" with `claim_uploads()` / `decline_uploads()` (`videos.claimed_from`,
+  `videos.claim_declined_at`). The claim runs with `app.claiming = on`, which
+  `guard_video_update` honours. The confirmation-link path still works as before.
 - Notifications (2026-09-11): `/api/cron/notify` runs every 5 minutes (Vercel cron,
   `CRON_SECRET` bearer) and sends through Resend via `src/lib/email.ts`:
   managers get one email per sweep listing new pending videos in their areas (admins

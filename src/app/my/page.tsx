@@ -4,6 +4,7 @@ import Nav from "@/components/Nav";
 import { getViewer } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { areaLabel, STATUS_LABEL, type VideoWithArea } from "@/lib/types";
+import ClaimCard, { type Claimable } from "./ClaimCard";
 
 export const metadata: Metadata = { title: "My videos" };
 
@@ -17,6 +18,9 @@ export default async function MyVideosPage({ searchParams }: PageProps<"/my">) {
     .eq("user_id", viewer?.userId ?? "")
     .order("created_at", { ascending: false });
   const videos = (data ?? []) as VideoWithArea[];
+  // Uploads an anonymous session made with this account's email, before the person signed in.
+  const { data: claimable } = viewer && !viewer.isAnonymous ? await supabase.rpc("claimable_uploads") : { data: null };
+  const toClaim = (claimable ?? []) as Claimable[];
 
   return (
     <>
@@ -27,6 +31,7 @@ export default async function MyVideosPage({ searchParams }: PageProps<"/my">) {
           <h1 className="text-2xl font-bold">My videos</h1>
           <Link href="/upload" className="btn-primary">Record another</Link>
         </div>
+        {toClaim.length > 0 && <ClaimCard videos={toClaim} />}
         {viewer && !viewer.isAnonymous && (
           <Link href="/my/teams" className="card mt-4 flex items-center justify-between gap-3 hover:border-accent">
             <span className="text-sm"><b>Teams.</b> Join a team or start one, and your videos go straight to its lead.</span>

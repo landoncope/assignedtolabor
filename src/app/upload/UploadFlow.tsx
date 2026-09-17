@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import Turnstile, { TURNSTILE_SITE_KEY } from "@/components/Turnstile";
 import VideoRecorder, { type Capture } from "@/components/VideoRecorder";
-import { LANGUAGE_SUGGESTIONS, areaForLanguage, normalizeLanguage } from "@/lib/languages";
+import { areaForLanguage, normalizeLanguage } from "@/lib/languages";
 import { CONSENT, CTAS, HOOKS, TEMPLATES, fillTemplate } from "@/lib/script";
 import { createClient } from "@/lib/supabase/client";
 import { areaLabel, type Area, type AreaSummary, type Script } from "@/lib/types";
@@ -32,8 +32,31 @@ export default function UploadFlow({ areas, myTeams, signedIn }: { areas: Area[]
   const [bodyCustom, setBodyCustom] = useState("");
   const [cta, setCta] = useState<string | null>(null);
   const [ctaCustom, setCtaCustom] = useState("");
-  const [language, setLanguage] = useState("");
-  const [teamId, setTeamId] = useState<string | null>(null);
+  // Where the video goes: "team:<id>" (a member's own team, the default for members,
+  // per Travis 2026-09-17), "lang:<Language>" (English, or a language some team
+  // covers), or "other" with a typed language. Free text was a datalist until
+  // 2026-09-17; iOS Safari drew it as a dropdown that never opened (tester report).
+  // Starting point: a member's own team; otherwise the phone's language (Landon,
+  // 2026-09-17): a phone set to Tagalog preselects Tagalog, one set to Spanish with no
+  // Spanish team preselects "Another language" with Spanish typed in; else English.
+  // Read once, lazily: the language step is not in the server-rendered HTML, so the
+  // client-only guess cannot cause a hydration mismatch.
+  const [start] = useState(() => startingDestination(myTeams, areas));
+  const [dest, setDest] = useState<string>(start.dest);
+  const [otherLanguage, setOtherLanguage] = useState(start.other);
+  const selectedTeam = dest.startsWith("team:") ? myTeams.find((t) => t.id === dest.slice(5)) ?? null : null;
+  const language = selectedTeam ? selectedTeam.language : dest.startsWith("lang:") ? dest.slice(5) : normalizeLanguage(otherLanguage);
+  const teamLanguages = [...new Set(areas.map((a) => a.language.trim()))]
+    .filter((l) => l.toLowerCase() !== "english" && !myTeams.some((t) => t.language.trim().toLowerCase() === l.toLowerCase()));
+  // Order: a member's own team(s), then English (most recordings), then the languages
+  // existing teams cover, then free text.
+  const destinations = [
+    ...myTeams.map((t) => ({ value: `team:${t.id}`, label: `My team · ${areaLabel(t)}` })),
+    ...(myTeams.some((t) => t.language.trim().toLowerCase() === "english") ? [] : [{ value: "lang:English", label: "English" }]),
+    ...teamLanguages.map((l) => ({ value: `lang:${l}`, label: l })),
+    { value: "other", label: "Another language" },
+  ];
+  const languageReady = language.length >= 2;
   const [name, setName] = useState("");
   const [capture, setCapture] = useState<Capture | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -90,7 +113,7 @@ export default function UploadFlow({ areas, myTeams, signedIn }: { areas: Area[]
       if (!session) throw new Error("Could not start a session. Please try again.");
       const lang = normalizeLanguage(language);
       await uploadVideo(supabase, session.user.id, capture.file, {
-        areaId: teamId ?? areaForLanguage(areas, lang)?.id ?? null,
+        areaId: selectedTeam?.id ?? areaForLanguage(areas, lang)?.id ?? null,
         language: lang || null,
         script: teleprompter ? script : null,
         uploaderName: name.trim() || null,
@@ -192,52 +215,38 @@ export default function UploadFlow({ areas, myTeams, signedIn }: { areas: Area[]
       )}
 
       {step === "language" && (
-        <StepShell title="What language will you speak?" sub="Your video goes to a team that shares it with people who speak your language, in your part of the world.">
-          {myTeams.length > 0 && (
-            <div className="mb-5">
-              <span className="mb-1 block text-xs text-neutral-400">Is this video for one of your teams?</span>
-              <div className="flex flex-col gap-2">
-                {myTeams.map((t) => (
-                  <button
-                    key={t.id}
-                    onClick={() => {
-                      const on = teamId !== t.id;
-                      setTeamId(on ? t.id : null);
-                      if (on && (!language.trim() || myTeams.some((x) => x.language === language))) setLanguage(t.language);
-                    }}
-                    aria-pressed={teamId === t.id}
-                    className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold ${teamId === t.id ? "border-amber-400 bg-amber-400/10" : "border-white/15"}`}
-                  >
-                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${teamId === t.id ? "border-amber-400 bg-amber-400 text-black" : "border-white/40"}`}>{teamId === t.id ? "✓" : ""}</span>
-                    {areaLabel(t)}
-                  </button>
-                ))}
-              </div>
-              <p className="mt-1 text-xs text-neutral-500">{teamId ? "It goes straight to that team's lead." : "Leave this unticked and it goes by language."}</p>
-            </div>
-          )}
-          <label className="block">
-            <span className="mb-1 block text-xs text-neutral-400">Language</span>
-            <input
-              className="input border-white/15 bg-white/5 text-white"
-              list="language-suggestions"
-              value={language}
-              onChange={(e) => setLanguage(e.target.value)}
-              placeholder="Tagalog, Swahili, Spanish…"
-              autoComplete="off"
-              autoCapitalize="words"
-            />
-            <datalist id="language-suggestions">
-              {[...new Set([...areas.map((a) => a.language), ...LANGUAGE_SUGGESTIONS])].map((l) => <option key={l} value={l} />)}
-            </datalist>
-          </label>
+        <StepShell title="What language will you speak?" sub={myTeams.length ? "Your team is the default. Pick a language instead to send it to that language's team." : "Your video goes to the team that shares videos in that language."}>
+          <div className="flex flex-col gap-2" role="radiogroup" aria-label="Language">
+            {destinations.map((d) => (
+              <button
+                key={d.value}
+                role="radio"
+                aria-checked={dest === d.value}
+                onClick={() => setDest(d.value)}
+                className={`rounded-xl border px-4 py-3 text-left text-sm font-semibold ${dest === d.value ? "border-amber-400 bg-amber-400/10" : "border-white/15"}`}
+              >
+                {d.label}
+              </button>
+            ))}
+            {dest === "other" && (
+              <input
+                className="input border-white/15 bg-white/5 text-white"
+                value={otherLanguage}
+                onChange={(e) => setOtherLanguage(e.target.value)}
+                placeholder="Type the language"
+                autoComplete="off"
+                autoCapitalize="words"
+                autoFocus
+              />
+            )}
+          </div>
           <label className="mt-5 block">
             <span className="mb-1 block text-xs text-neutral-400">Your first name (optional)</span>
             <input className="input border-white/15 bg-white/5 text-white" value={name} onChange={(e) => setName(e.target.value)} autoComplete="given-name" />
           </label>
           <div className="mt-6 flex flex-col gap-2">
-            <button onClick={() => go("record")} disabled={normalizeLanguage(language).length < 2} className="btn-primary py-3.5 text-base">Record now</button>
-            <button onClick={() => fileRef.current?.click()} disabled={normalizeLanguage(language).length < 2} className="btn border border-white/20 py-3 text-white">Upload a video I already have</button>
+            <button onClick={() => go("record")} disabled={!languageReady} className="btn-primary py-3.5 text-base">Record now</button>
+            <button onClick={() => fileRef.current?.click()} disabled={!languageReady} className="btn border border-white/20 py-3 text-white">Upload a video I already have</button>
           </div>
           {error && <p className="mt-3 text-center text-sm text-red-400">{error}</p>}
         </StepShell>
@@ -293,7 +302,7 @@ export default function UploadFlow({ areas, myTeams, signedIn }: { areas: Area[]
           <h2 className="mt-5 text-2xl font-bold">Thank you</h2>
           <p className="mt-2 max-w-xs text-neutral-400">Your video is with the review team. If they share it, it will go out on the team&apos;s social accounts.</p>
           {emailState === "sent" ? (
-            <p className="mt-8 rounded-xl bg-white/5 p-4 text-sm">Check your email for a confirmation link. After that you can sign in any time to see your videos.</p>
+            <p className="mt-8 rounded-xl bg-white/5 p-4 text-sm">Check your email for a link that attaches this video to your account. If you sign in another way instead, My videos will ask whether this video is yours.</p>
           ) : (
             <form onSubmit={attachEmail} className="mt-8 w-full">
               <p className="mb-2 text-sm text-neutral-300">Want to follow what happens to it? Add your email.</p>
@@ -346,4 +355,23 @@ function NextRow({ onSkip, onNext, disabled, onSkipAll, skipAllLabel }: { onSkip
       {onSkipAll && <button onClick={onSkipAll} className="py-1 text-sm text-neutral-500 underline-offset-2 hover:underline">{skipAllLabel ?? "Skip the script"}</button>}
     </div>
   );
+}
+
+function startingDestination(myTeams: AreaSummary[], areas: Area[]): { dest: string; other: string } {
+  if (myTeams[0]) return { dest: `team:${myTeams[0].id}`, other: "" };
+  const guess = phoneLanguage();
+  if (!guess || guess.toLowerCase() === "english") return { dest: "lang:English", other: "" };
+  const covered = areas.find((a) => a.language.trim().toLowerCase() === guess.toLowerCase());
+  return covered ? { dest: `lang:${covered.language.trim()}`, other: "" } : { dest: "other", other: guess };
+}
+
+/** The phone's language as an English name ("Tagalog", "Spanish"), or null. */
+function phoneLanguage(): string | null {
+  if (typeof navigator === "undefined" || !navigator.language) return null;
+  const tag = navigator.language.split("-")[0].toLowerCase();
+  if (tag === "fil" || tag === "tl") return "Tagalog";
+  try {
+    const name = new Intl.DisplayNames(["en"], { type: "language" }).of(tag);
+    return name && name.toLowerCase() !== tag ? name : null;
+  } catch { return null; }
 }

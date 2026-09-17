@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 const env = Object.fromEntries(readFileSync(".env.local","utf8").split("\n").filter(l=>l.includes("=")).map(l=>{const i=l.indexOf("=");return [l.slice(0,i), l.slice(i+1).replace(/^'|'$/g,"")]}));
 const URL = env.NEXT_PUBLIC_SUPABASE_URL, ANON = env.NEXT_PUBLIC_SUPABASE_ANON_KEY, SRV = env.SUPABASE_SERVICE_ROLE_KEY;
@@ -100,7 +101,22 @@ try {
   const { error: againErr } = await admClient.rpc("decide_team_application", { app_id: startApp.id, approve: false, note: null });
   ok("a decided request cannot be decided again", !!againErr, againErr?.message);
 
-  // 5. admin seeding trigger
+  // 5. stranded uploads: an anonymous upload whose pending (unconfirmed) email matches a signed-in account
+  const { data: anonVid, error: anonVidErr } = await anon.from("videos").insert({ user_id: a.user.id, uploader_name: "Stranded", language: "English" }).select("id").single();
+  ok("anonymous session uploads again", !anonVidErr && !!anonVid?.id, anonVidErr?.message);
+  execFileSync("psql", [env.SUPABASE_DB_URL, "-v", "ON_ERROR_STOP=1", "-qc", `update auth.users set email_change = '${memEmail}' where id = '${a.user.id}'`], { stdio: "pipe" });
+  const { data: mineToClaim } = await mem.rpc("claimable_uploads");
+  ok("the account with that email sees the stranded upload", mineToClaim?.length === 1 && mineToClaim[0].id === anonVid.id, JSON.stringify(mineToClaim));
+  const { data: notMine } = await mgr.rpc("claimable_uploads");
+  ok("other accounts see nothing to claim", (notMine ?? []).length === 0);
+  const { data: claimed, error: claimErr } = await mem.rpc("claim_uploads");
+  ok("claiming moves the video", !claimErr && claimed === 1, claimErr?.message ?? String(claimed));
+  const { data: nowMine } = await mem.from("videos").select("id, claimed_from").eq("id", anonVid.id);
+  ok("the video now belongs to the account and remembers where it came from", nowMine?.length === 1 && nowMine[0].claimed_from === a.user.id);
+  const { data: anonStill } = await anon.from("videos").select("id").eq("id", anonVid.id);
+  ok("the anonymous session no longer sees it", anonStill?.length === 0);
+
+  // 6. admin seeding trigger
   const { data: adm, error: admErr } = await admin.auth.admin.createUser({ email: "travis.lish@gmail.com", password: "Temp-" + Date.now(), email_confirm: true });
   if (admErr) console.log("skip admin-seed check:", admErr.message); else {
     created.push(adm.user.id);
