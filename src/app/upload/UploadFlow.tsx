@@ -288,7 +288,7 @@ export default function UploadFlow({ areas, myTeams, signedIn }: { areas: Area[]
           {uploading && (
             <div className="mt-4">
               <div className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full bg-amber-400 transition-all" style={{ width: `${progress}%` }} /></div>
-              <p className="mt-1 text-center text-xs text-neutral-400">Uploading… {progress}%. Keep this page open until it says thank you.</p>
+              <p className="mt-1 text-center text-xs text-neutral-400">Uploading… {progress}%. Keep this page open until it finishes.</p>
             </div>
           )}
           {error && <p className="mt-3 text-center text-sm text-red-400">{error}</p>}

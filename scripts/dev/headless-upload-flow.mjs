@@ -44,6 +44,7 @@ await page.getByText("Looks good?").waitFor({ timeout: 120000 });
 await page.locator("p.text-neutral-500:has-text('×')").waitFor({ timeout: 20000 });
 console.log("review line:", (await page.locator("p.text-neutral-500:has-text('×')").textContent()).trim());
 await page.getByRole("button", { name: "Send it in" }).click();
-await page.getByText("Thank you").waitFor({ timeout: 120000 });
+// The heading, exactly: a loose text match once passed on helper copy that contained the phrase (2026-09-18).
+await page.getByRole("heading", { name: "Thank you", exact: true }).waitFor({ timeout: 120000 });
 console.log("RESULT: PASS (uploaded)");
 await browser.close();
