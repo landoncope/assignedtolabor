@@ -355,8 +355,9 @@ function NextRow({ onSkip, onNext, disabled, onSkipAll, skipAllLabel }: { onSkip
   return (
     <div className="mt-auto flex flex-col gap-2 pt-6">
       <button onClick={onNext} disabled={disabled} className="btn-primary py-3.5 text-base">Next</button>
-      <button onClick={onSkip} className="py-2 text-sm font-semibold text-neutral-400">I&apos;ll improvise this part</button>
-      {onSkipAll && <button onClick={onSkipAll} className="py-1 text-sm text-neutral-500 underline-offset-2 hover:underline">{skipAllLabel ?? "Skip the script"}</button>}
+      {/* Outlined buttons, not faint links (Landon, 2026-09-18): many people skip the prompts, so skipping should be easy to see. */}
+      <button onClick={onSkip} className="btn border border-white/30 py-3 text-white">I&apos;ll improvise this part</button>
+      {onSkipAll && <button onClick={onSkipAll} className="btn border border-white/20 py-3 text-neutral-200">{skipAllLabel ?? "Skip the script"}</button>}
     </div>
   );
 }

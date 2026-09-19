@@ -21,6 +21,15 @@ admins decide; members tag uploads with their team) shipped 2026-09-17 for Travi
 Saturday 2026-09-19 event (100+ uploads, 10+ would-be leads). Next: a real-phone
 re-test of the recorder, the event, then phase-2 Instagram API posting.
 
+### After the 2026-09-19 event (do these, then delete this list)
+
+- Raise `VIDEO_BITRATE` back to 8 Mbps (cut to 5 only for the venue network; Landon
+  prefers 8: storage is cheap and YouTube may follow Instagram).
+- Remind Landon to downgrade Resend from Pro (upgraded 2026-09-18) unless email volume
+  stayed above ~100 a day.
+- Still open with Travis: Brady Gordon's email (Philippines lead), whether
+  holyrebellionph@gmail.com stays a lead, Instagram handles for the four new teams.
+
 ## Account setup (one-time, needs dashboard access)
 
 1. Supabase DONE 2026-09-10: project `assignedtolabor` (renamed from a typo 2026-09-11), ref `zyqualxehxopcvkqdjlo`,
@@ -82,8 +91,8 @@ re-test of the recorder, the event, then phase-2 Instagram API posting.
      `node scripts/dev/big-upload-check.mjs` (60 MB and 120 MB bodies through the
      custom domain; 400 "EntityTooLarge" before, 200 after). The spend cap is still on.
    - Compute is the Pro default and the database is 12 MB; nothing to scale.
-   - Resend's plan was not checked (not logged in here). Its free tier is 100 emails a
-     day and auth emails share it with the notification digests.
+   - Resend: Landon upgraded to Pro on 2026-09-18 (the free tier is 100 emails a day,
+     and auth emails share it with the notification digests).
 7. Seed data lives in `supabase/seeds/` (applied by hand with psql, re-runnable).
    Philippines / Tagalog with Instagram `Liwinag.ni.kristo` and manager invite
    `holyrebellionph@gmail.com` were seeded 2026-09-10. English, Spanish, French and
@@ -295,7 +304,8 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
   A team option sets `area_id` directly; a language routes to the single active area
   with that language (`areaForLanguage`), else null = admin queue, and reviewers
   assign the team on the review page.
-- Script builder (hook / body / CTA) is optional at every level: each step has
+- Script builder (hook / body / CTA) is optional at every level (the skip controls are
+  outlined buttons under Next since 2026-09-18, not faint links): each step has
   "I'll improvise this part", the first step has "Skip the script, I know what I'll
   say" and the second "Skip the rest of the script", both jumping to the language
   step (Landon, 2026-09-15: many people don't need prompts). A skipped script stores
@@ -334,14 +344,19 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
   - The recorder therefore draws each frame into a 9:16 canvas (`startPortraitCapture`
     in `VideoRecorder.tsx`, rVFC-driven, 5 Mbps since 2026-09-18, was 8) and records that: portrait pixels, no
     rotation metadata, on every device. getUserMedia exposes the front camera's full
-    wide field (reads as "0.5x" versus the Camera app), so the default is a 1.5x zoom
-    (user-selectable 1x/1.5x/2x). Since 2026-09-17 the zoom is applied by the camera
+    wide field (reads as "0.5x" versus the Camera app), so phones and tablets start at
+    1.5x; laptops and desktops start at 1x since 2026-09-18 (Landon on a MacBook: 1.5x
+    was far too tight; `isHandheld()` = user agent, plus touch points for iPadOS). The
+    user can pick 1x/1.5x/2x either way. Since 2026-09-17 the zoom is applied by the camera
     itself (`applyConstraints({zoom})`, which WebKit implements with
     `setVideoZoomFactor` and Android Chrome supports) whenever `getCapabilities().zoom`
     reports a plain factor range (`min <= 1`, `max >= level`; webcams reporting device
     units like 100..400 are ignored); otherwise the canvas crops and the preview is
-    CSS-scaled to match. The camera is asked for 1920x1080 (sensor coordinates, so an
-    upright phone gives 1080x1920); it was 3840x2160 until 2026-09-17, when a tester's
+    CSS-scaled to match. Handhelds ask the camera for 1920x1080 (sensor coordinates, so
+    an upright phone gives 1080x1920); laptops and desktops ask for 3840x2160 and get
+    their largest mode, because their frame is landscape and the 9:16 slice is only as
+    tall as the frame: 608x1080 from a 1080p webcam (a MacBook's built-in camera), full
+    1080x1920 from a 4K one. Everyone asked for 3840x2160 until 2026-09-17, when a tester's
     iPhone ran the 4K pipeline at ~15 fps and stopped delivering camera frames 8 s
     before the end of a 41 s clip while the mic kept going (video track ended at 32.5 s,
     audio at 40.8 s; found with ffprobe frame timestamps, see below).

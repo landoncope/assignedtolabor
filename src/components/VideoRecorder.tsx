@@ -20,20 +20,36 @@ type Clip = { id: number; blob: Blob; thumb: string; secs: number; ms: number; f
 // The mic is asked for raw audio. The defaults (echo cancellation and friends) put iOS
 // into its phone-call voice-processing unit, which is the "worse than the Camera app"
 // sound a tester noticed. Nothing plays back while recording, so there is no echo.
-const CAMERA: MediaStreamConstraints = {
-  video: { facingMode: "user", width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
-  audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-};
+// Laptops and desktops ask for the camera's largest mode instead (2026-09-18): their
+// frame is landscape, so the 9:16 slice is only as tall as the frame (608x1080 from a
+// 1080p webcam, full 1080x1920 from a 4K one), and they have the horsepower the phone lacked.
+function isHandheld(): boolean {
+  if (typeof navigator === "undefined") return true;
+  const ua = navigator.userAgent;
+  // iPadOS reports a Mac user agent; touch points tell them apart.
+  return /iPhone|iPad|iPod|Android/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+}
+function cameraConstraints(): MediaStreamConstraints {
+  const size = isHandheld() ? { width: { ideal: 1920 }, height: { ideal: 1080 } } : { width: { ideal: 3840 }, height: { ideal: 2160 } };
+  return {
+    video: { facingMode: "user", ...size, frameRate: { ideal: 30 } },
+    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+  };
+}
 // 5 Mbps, down from 8 (2026-09-18, before a 100-person event on one venue network): a
 // 60 s clip is ~37 MB instead of ~60 MB, and Instagram re-encodes to less than this anyway.
 const VIDEO_BITRATE = 5_000_000;
 const AUDIO_BITRATE = 192_000;
 // The browser gets the front camera's full wide field of view, which reads as "0.5x"
-// next to the Camera app's cropped selfie framing. Default to a 1.5x zoom; the user
-// can change it. Applied by the camera where possible, else identically to the
-// preview (CSS scale) and to the recorded canvas (crop).
+// next to the Camera app's cropped selfie framing. Phones and tablets therefore start
+// at 1.5x; laptop and desktop webcams have a normal field of view and start at 1x
+// (Landon on a MacBook, 2026-09-18: 1.5x was far too tight). The user can change it.
+// Applied by the camera where possible, else identically to the preview (CSS scale)
+// and to the recorded canvas (crop).
 const ZOOM_LEVELS = [1, 1.5, 2] as const;
-const DEFAULT_ZOOM = 1.5;
+function defaultZoom(): number {
+  return isHandheld() ? 1.5 : 1;
+}
 // Camera frames normally arrive every 33 ms. Past this the draw loop counts as stalled
 // and the watchdog repaints the last frame so the recording keeps its timeline.
 const STALL_MS = 250;
@@ -89,9 +105,9 @@ export default function VideoRecorder({
   const [tips, setTips] = useState<"off" | "show" | "fade">("off");
   const [merging, setMerging] = useState(false);
   const [showScript, setShowScript] = useState(true);
-  const [zoom, setZoom] = useState<number>(DEFAULT_ZOOM);
+  const [zoom, setZoom] = useState<number>(defaultZoom);
   const [zoomMode, setZoomMode] = useState<ZoomMode>("canvas");
-  const zoomRef = useRef<number>(DEFAULT_ZOOM);
+  const zoomRef = useRef<number>(zoom);
   zoomRef.current = zoom;
   // With the camera zooming, the preview and the canvas use the frame as is.
   const cropZoom = zoomMode === "native" ? 1 : zoom;
@@ -173,7 +189,7 @@ export default function VideoRecorder({
     teardown();
     setCam("idle");
     try {
-      attach(await navigator.mediaDevices.getUserMedia(CAMERA));
+      attach(await navigator.mediaDevices.getUserMedia(cameraConstraints()));
     } catch { setCam("error"); }
   }
   // The preview has no `autoplay` attribute on purpose: iOS pauses autoplaying
@@ -191,7 +207,7 @@ export default function VideoRecorder({
     let cancelled = false;
     (async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia(CAMERA);
+        const stream = await navigator.mediaDevices.getUserMedia(cameraConstraints());
         if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
         attach(stream);
       } catch { if (!cancelled) setCam("error"); }
