@@ -91,6 +91,12 @@ re-test of the recorder, the event, then phase-2 Instagram API posting.
      `node scripts/dev/big-upload-check.mjs` (60 MB and 120 MB bodies through the
      custom domain; 400 "EntityTooLarge" before, 200 after). The spend cap is still on.
    - Compute is the Pro default and the database is 12 MB; nothing to scale.
+   - `scripts/dev/event-watch.sh [seconds]` is a read-only live view for the day:
+     uploads per 15 min/hour, by team, recorder health (avg fps, stalls, camera zoom),
+     devices, sign-ins, typed-but-unconfirmed emails, waiting team requests.
+   - Emergency levers, in order: people record with their own camera app and use
+     "Upload a video I already have"; captcha off in Auth -> Attack Protection if
+     submits fail on captcha; Auth -> Rate Limits if errors mention a rate limit.
    - Resend: Landon upgraded to Pro on 2026-09-18 (the free tier is 100 emails a day,
      and auth emails share it with the notification digests).
 7. Seed data lives in `supabase/seeds/` (applied by hand with psql, re-runnable).
