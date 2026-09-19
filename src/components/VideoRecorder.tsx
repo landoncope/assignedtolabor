@@ -24,7 +24,9 @@ const CAMERA: MediaStreamConstraints = {
   video: { facingMode: "user", width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
   audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
 };
-const VIDEO_BITRATE = 8_000_000;
+// 5 Mbps, down from 8 (2026-09-18, before a 100-person event on one venue network): a
+// 60 s clip is ~37 MB instead of ~60 MB, and Instagram re-encodes to less than this anyway.
+const VIDEO_BITRATE = 5_000_000;
 const AUDIO_BITRATE = 192_000;
 // The browser gets the front camera's full wide field of view, which reads as "0.5x"
 // next to the Camera app's cropped selfie framing. Default to a 1.5x zoom; the user
@@ -76,6 +78,8 @@ export default function VideoRecorder({
   const diagRef = useRef({ camera: "", recorded: "", events: [] as string[], frames: 0, repaints: 0 });
   // The zoom level the camera itself is applying, or null when the canvas crops.
   const nativeZoomRef = useRef<number | null>(null);
+  // Keeps the phone from dimming or locking mid-take (iOS 16.4+, Android Chrome).
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
   const [cam, setCam] = useState<"idle" | "live" | "recording" | "error">("idle");
   const [clips, setClips] = useState<Clip[]>([]);
@@ -123,6 +127,8 @@ export default function VideoRecorder({
     recorderRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
+    wakeLockRef.current?.release().catch(() => {});
+    wakeLockRef.current = null;
   }
   /**
    * Zoom with the camera itself where the browser exposes it (iOS 17+, Android
@@ -161,6 +167,7 @@ export default function VideoRecorder({
     if (v) { v.srcObject = stream; v.muted = true; v.play().catch(() => {}); }
     setCam("live");
     void applyZoom(zoomRef.current);
+    navigator.wakeLock?.request("screen").then((l) => { wakeLockRef.current = l; }).catch(() => { /* unsupported or refused */ });
   }
   async function startCamera() {
     teardown();

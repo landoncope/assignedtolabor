@@ -71,7 +71,20 @@ re-test of the recorder, the event, then phase-2 Instagram API posting.
    `.env.local`). Switching the URL changed the auth cookie name (@supabase/ssr derives
    it from the hostname), so everyone was signed out once. Delete the CNAME and the
    domain stops; the supabase.co hostname keeps working regardless.
-6. Seed data lives in `supabase/seeds/` (applied by hand with psql, re-runnable).
+6. Event readiness (2026-09-18, before a talk where ~100 people record at once on one
+   venue network; all dashboard settings, none in the repo):
+   - Supabase Auth -> Rate Limits were the defaults, which are PER IP ADDRESS and a
+     room shares one: anonymous sign-ins 30/h -> 1000/h, emails 30/h -> 300/h, token
+     verifications and sign-ups/sign-ins 30 -> 150 per 5 min. Turnstile stays the abuse
+     control. Lower them again only if abuse shows up.
+   - Storage -> Settings -> Global file size limit was 50 MB (the bucket's own 500 MB
+     cap does not override it); now 500 MB. Found with
+     `node scripts/dev/big-upload-check.mjs` (60 MB and 120 MB bodies through the
+     custom domain; 400 "EntityTooLarge" before, 200 after). The spend cap is still on.
+   - Compute is the Pro default and the database is 12 MB; nothing to scale.
+   - Resend's plan was not checked (not logged in here). Its free tier is 100 emails a
+     day and auth emails share it with the notification digests.
+7. Seed data lives in `supabase/seeds/` (applied by hand with psql, re-runnable).
    Philippines / Tagalog with Instagram `Liwinag.ni.kristo` and manager invite
    `holyrebellionph@gmail.com` were seeded 2026-09-10. English, Spanish, French and
    Swahili (language-only teams, no leads yet) were seeded 2026-09-17 at Travis's
@@ -319,7 +332,7 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
     timer bottom-left and the record button; the clip strip with delete buttons sits
     below the frame.
   - The recorder therefore draws each frame into a 9:16 canvas (`startPortraitCapture`
-    in `VideoRecorder.tsx`, rVFC-driven, 8 Mbps) and records that: portrait pixels, no
+    in `VideoRecorder.tsx`, rVFC-driven, 5 Mbps since 2026-09-18, was 8) and records that: portrait pixels, no
     rotation metadata, on every device. getUserMedia exposes the front camera's full
     wide field (reads as "0.5x" versus the Camera app), so the default is a 1.5x zoom
     (user-selectable 1x/1.5x/2x). Since 2026-09-17 the zoom is applied by the camera
@@ -370,6 +383,12 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
     `/dev/merge` page 404s unless `ENABLE_DEV_PAGES=1`, which Vercel never sets. Do not
     run it against `next dev`: the HMR socket fails under the tool sandbox and reloads
     the page mid-test.
+- Upload resilience (2026-09-18): `uploadVideo` tries up to three times, each with a
+  fresh path and signed URL, aborts an attempt that makes no progress for 45 s, and
+  retries only on network errors and 408/425/429/5xx; "too large" and other 4xx fail
+  at once with a plain message. A lost response can orphan an object (accepted). The
+  upload and the live camera hold a screen wake lock where the browser has one, and
+  the progress line says to keep the page open.
 - Files: private `videos` bucket at `{user_id}/{ts}.{ext}`, 500 MB cap. Playback is a
   1-hour signed URL from `/api/videos/[id]/playback-url` using the caller's session.
   `/api/cron/purge` (daily, `CRON_SECRET` bearer) deletes files 7 days after posted or
@@ -411,7 +430,9 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
   `videos.uploader_notified_status`, `area_managers.notified_at`,
   `manager_invites.notified_at`; every send is logged in `notifications`. Items are
   marked only after Resend accepts the message, so failures retry next sweep.
-  `?dry=1` returns the plan without sending. Test: `node scripts/dev/notify-dryrun.mjs`
+  A recipient gets at most one `new_videos` digest per 30 minutes
+  (`DIGEST_MIN_MINUTES`); a video whose recipients include a throttled one stays
+  pending and rides the next digest. `?dry=1` returns the plan without sending. Test: `node scripts/dev/notify-dryrun.mjs`
   against a local `next start -p 3001`. PostgREST joins from `videos` to `profiles`
   must name the FK (`profiles!videos_user_id_fkey`): the table has three links to it.
 - `guard_video_update` lets callers with no user id through (service role, migrations);

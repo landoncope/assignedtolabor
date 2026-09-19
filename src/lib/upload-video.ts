@@ -4,6 +4,32 @@ import type { CaptureMeta } from "@/lib/capture-meta";
 import type { Script } from "@/lib/types";
 
 export const MAX_VIDEO_BYTES = 500 * 1024 * 1024;
+const UPLOAD_ATTEMPTS = 3;
+const STALL_MS = 45_000;
+/** 0 = network error, abort or stall. */
+const RETRYABLE = new Set([0, 408, 425, 429, 500, 502, 503, 504]);
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function putFile(url: string, file: File, contentType: string, onProgress?: (pct: number) => void): Promise<{ status: number; body: string }> {
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    let stall: ReturnType<typeof setTimeout> | undefined;
+    const arm = () => { clearTimeout(stall); stall = setTimeout(() => xhr.abort(), STALL_MS); };
+    const finish = (status: number) => { clearTimeout(stall); resolve({ status, body: status ? xhr.responseText : "" }); };
+    xhr.upload.onprogress = (ev) => {
+      arm();
+      if (ev.lengthComputable && onProgress) onProgress(Math.round((ev.loaded / ev.total) * 100));
+    };
+    xhr.onload = () => finish(xhr.status);
+    xhr.onerror = () => finish(0);
+    xhr.onabort = () => finish(0);
+    xhr.open("PUT", url);
+    xhr.setRequestHeader("x-upsert", "false");
+    xhr.setRequestHeader("content-type", contentType);
+    arm();
+    xhr.send(file);
+  });
+}
 
 export type UploadFields = {
   areaId: string | null;
@@ -37,23 +63,28 @@ export async function uploadVideo(
   if (!contentType.startsWith("video/")) throw new Error("Please choose a video file.");
   if (file.size > MAX_VIDEO_BYTES) throw new Error("Videos must be under 500 MB.");
 
-  const path = `${userId}/${Date.now()}.${ext}`;
-
-  const { data: signed, error: signErr } = await supabase.storage.from("videos").createSignedUploadUrl(path);
-  if (signErr || !signed) throw new Error(signErr?.message ?? "Could not start the upload.");
-
-  await new Promise<void>((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.upload.onprogress = (ev) => {
-      if (ev.lengthComputable && onProgress) onProgress(Math.round((ev.loaded / ev.total) * 100));
-    };
-    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed (${xhr.status})`)));
-    xhr.onerror = () => reject(new Error("Network error during upload."));
-    xhr.open("PUT", signed.signedUrl);
-    xhr.setRequestHeader("x-upsert", "false");
-    xhr.setRequestHeader("content-type", contentType);
-    xhr.send(file);
-  });
+  // Venue networks drop connections (2026-09-18: 100 phones on one uplink). Try up to
+  // three times, each with a fresh path and signed URL; abort an attempt that makes no
+  // progress for 45 s. A lost response can orphan an object; that is accepted.
+  let path = "";
+  for (let attempt = 1; attempt <= UPLOAD_ATTEMPTS; attempt++) {
+    const last = attempt === UPLOAD_ATTEMPTS;
+    path = `${userId}/${Date.now()}.${ext}`;
+    const { data: signed, error: signErr } = await supabase.storage.from("videos").createSignedUploadUrl(path);
+    if (signErr || !signed) {
+      if (last) throw new Error(signErr?.message ?? "Could not start the upload.");
+      await wait(1500 * attempt);
+      continue;
+    }
+    const { status, body } = await putFile(signed.signedUrl, file, contentType, onProgress);
+    if (status >= 200 && status < 300) break;
+    if (/EntityTooLarge|exceeded the maximum allowed size/i.test(body)) throw new Error("This video is too large to upload. Try a shorter one.");
+    if (!RETRYABLE.has(status) || last) {
+      throw new Error(status === 0 ? "The connection dropped during the upload. Check your signal and tap Send again." : `Upload failed (${status})`);
+    }
+    onProgress?.(0);
+    await wait(1500 * attempt);
+  }
 
   try {
     const { data, error } = await supabase

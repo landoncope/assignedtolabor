@@ -14,6 +14,8 @@ import { areaLabel } from "@/lib/types";
  * Each item is marked as notified only after its email is accepted by Resend, so a
  * failed send is retried on the next run. `?dry=1` returns the plan without sending.
  */
+const DIGEST_MIN_MINUTES = 30;
+
 export async function GET(request: NextRequest) {
   const auth = request.headers.get("authorization") ?? "";
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -49,6 +51,13 @@ export async function GET(request: NextRequest) {
     .gte("created_at", new Date(Date.now() - 7 * 86400_000).toISOString())
     .order("created_at");
   type Fresh = { id: string; area_id: string | null; uploader_name: string | null; created_at: string; area: { id: string; name: string; language: string } | null };
+  // During a rush (100 uploads in an hour) a digest every sweep is noise and burns the
+  // email quota that sign-in links share. A recipient gets at most one new-videos digest
+  // per DIGEST_MIN_MINUTES; their videos stay pending and ride the next one.
+  const since = new Date(Date.now() - DIGEST_MIN_MINUTES * 60_000).toISOString();
+  const { data: recentDigests } = await db.from("notifications").select("recipient").eq("kind", "new_videos").gte("sent_at", since);
+  const throttled = new Set(((recentDigests ?? []) as { recipient: string }[]).map((n) => n.recipient));
+  const deferred = new Set<string>();
   const byRecipient = new Map<string, Fresh[]>();
   for (const v of (fresh ?? []) as unknown as Fresh[]) {
     let recipients: Person[] = [];
@@ -57,6 +66,7 @@ export async function GET(request: NextRequest) {
       recipients = ((mgrs ?? []) as unknown as { profile: Person | null }[]).map((m) => m.profile).filter((p): p is Person => !!p?.email);
     }
     if (recipients.length === 0) recipients = admins;
+    if (recipients.some((p) => throttled.has(p.email!))) { deferred.add(v.id); continue; }
     for (const p of recipients) byRecipient.set(p.email!, [...(byRecipient.get(p.email!) ?? []), v]);
   }
   for (const [to, vids] of byRecipient) {
@@ -77,7 +87,7 @@ export async function GET(request: NextRequest) {
   // Videos whose email went out earlier this run for another recipient, or with nobody to tell: mark so they never loop.
   if (!dry && fresh?.length) {
     const told = new Set([...byRecipient.values()].flat().map((v) => v.id));
-    const untold = (fresh as unknown as Fresh[]).filter((v) => !told.has(v.id)).map((v) => v.id);
+    const untold = (fresh as unknown as Fresh[]).filter((v) => !told.has(v.id) && !deferred.has(v.id)).map((v) => v.id);
     if (untold.length) await db.from("videos").update({ managers_notified_at: new Date().toISOString() }).in("id", untold);
   }
 

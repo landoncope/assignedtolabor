@@ -103,6 +103,8 @@ export default function UploadFlow({ areas, myTeams, signedIn }: { areas: Area[]
   async function submit() {
     if (!capture || uploading) return;
     setUploading(true); setError(""); setProgress(0);
+    let lock: WakeLockSentinel | null = null;
+    try { lock = (await navigator.wakeLock?.request("screen")) ?? null; } catch { /* unsupported or refused */ }
     try {
       let { data: { session } } = await supabase.auth.getSession();
       if (!session) {
@@ -126,6 +128,8 @@ export default function UploadFlow({ areas, myTeams, signedIn }: { areas: Area[]
     } catch (e) {
       setUploading(false);
       setError(e instanceof Error ? e.message : "Upload failed. Please try again.");
+    } finally {
+      lock?.release().catch(() => {});
     }
   }
 
@@ -284,7 +288,7 @@ export default function UploadFlow({ areas, myTeams, signedIn }: { areas: Area[]
           {uploading && (
             <div className="mt-4">
               <div className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full bg-amber-400 transition-all" style={{ width: `${progress}%` }} /></div>
-              <p className="mt-1 text-center text-xs text-neutral-400">Uploading… {progress}%</p>
+              <p className="mt-1 text-center text-xs text-neutral-400">Uploading… {progress}%. Keep this page open until it says thank you.</p>
             </div>
           )}
           {error && <p className="mt-3 text-center text-sm text-red-400">{error}</p>}
