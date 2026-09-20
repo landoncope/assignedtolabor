@@ -438,9 +438,10 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
     used to copy the mirror, so posters in the review queue flipped when played. Files
     picked with "Upload a video I already have" get a thumbnail too
     (`src/lib/video-thumb.ts`: hidden muted element, played, first frame about 1 s in;
-    "" when the browser cannot decode the file). Thumbnails stored before 2026-09-20
-    were flipped once in the database (backup in the session scratchpad, ids recorded
-    in the commit message).
+    "" when the browser cannot decode the file). On 2026-09-20 the 27 thumbnails stored
+    before the fix were un-mirrored in the database (checked against the videos' first
+    frames) and the 5 picked files without one got theirs from the stored file with
+    ffmpeg. Flipping again would undo it: never re-run that.
   - Freeze defences (2026-09-17): the preview `<video>` has no `autoplay` attribute
     (iOS pauses autoplaying elements it decides are off screen, and WebKit bug 230922
     froze autoplaying MediaStream elements outright); `play()` is called by us and again
