@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { baseMimeType, mergeClips, pickRecorderMimeType } from "@/lib/merge-clips";
+import { readMp4Orientation } from "@/lib/mp4-orientation";
+import { readPicture } from "@/lib/mp4-tracks";
+import { thumbnailFromFile } from "@/lib/video-thumb";
 import { createClient } from "@/lib/supabase/client";
 import { uploadVideo } from "@/lib/upload-video";
 
@@ -38,6 +41,7 @@ async function recordSyntheticClip(seconds: number, label: string): Promise<Blob
 export default function MergeTest() {
   const [lines, setLines] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [thumb, setThumb] = useState("");
   const log = (s: string) => setLines((l) => [...l, s]);
 
   async function run(upload: boolean) {
@@ -66,6 +70,39 @@ export default function MergeTest() {
     } finally { setBusy(false); }
   }
 
+  /** Merges files from disk, e.g. rotation-tagged clips like an iPhone's, and reports what happened to the orientation. */
+  async function mergeFiles(files: File[]) {
+    setBusy(true); setLines([]);
+    try {
+      for (const f of files) log(`in: ${f.name} ${f.size}B ${JSON.stringify(readMp4Orientation(await f.slice(0, 1 << 20).arrayBuffer()))}`);
+      const merged = await mergeClips(files);
+      log(`merged: ${merged.type} ${merged.size}B ${JSON.stringify(readMp4Orientation(await merged.arrayBuffer()))}`);
+      const v = document.createElement("video");
+      v.src = URL.createObjectURL(merged);
+      await new Promise<void>((res, rej) => { v.onloadedmetadata = () => res(); v.onerror = () => rej(new Error("merged video failed to load")); });
+      log(`merged plays as: ${v.videoWidth}x${v.videoHeight}, ${v.duration.toFixed(2)}s`);
+      log("RESULT: PASS");
+    } catch (e) {
+      log(`RESULT: FAIL ${e instanceof Error ? e.message : String(e)}`);
+    } finally { setBusy(false); }
+  }
+
+  /** What the upload flow does with a picked file: a thumbnail, plus the recorder's frozen-picture check. */
+  async function inspectFile(f: File) {
+    setBusy(true); setLines([]); setThumb("");
+    try {
+      const t0 = performance.now();
+      const t = await thumbnailFromFile(f);
+      setThumb(t);
+      log(`thumbnail: ${t ? `${t.length} chars in ${Math.round(performance.now() - t0)}ms` : "(none)"}`);
+      const r = await readPicture(f);
+      log(`picture check: ${r ? `picture ${r.picture.toFixed(1)}s, sound ${r.sound.toFixed(1)}s, longest frame ${r.longestHold.seconds.toFixed(1)}s from ${r.longestHold.at.toFixed(1)}s` : "not readable"}`);
+      log("RESULT: PASS");
+    } catch (e) {
+      log(`RESULT: FAIL ${e instanceof Error ? e.message : String(e)}`);
+    } finally { setBusy(false); }
+  }
+
   return (
     <main className="mx-auto max-w-xl p-6">
       <h1 className="text-xl font-bold">Recorder pipeline self-test</h1>
@@ -74,6 +111,14 @@ export default function MergeTest() {
         <button id="run-merge" className="btn-primary" disabled={busy} onClick={() => run(false)}>Merge only</button>
         <button id="run-upload" className="btn-secondary" disabled={busy} onClick={() => run(true)}>Merge + upload</button>
       </div>
+      <label className="mt-4 block text-sm text-muted">Or merge clips from disk (orientation is reported):
+        <input id="merge-files" type="file" accept="video/*" multiple disabled={busy} className="mt-1 block" onChange={(e) => { const fs = Array.from(e.target.files ?? []); e.target.value = ""; if (fs.length) void mergeFiles(fs); }} />
+      </label>
+      <label className="mt-4 block text-sm text-muted">Or inspect one file (thumbnail and frozen-picture check):
+        <input id="inspect-file" type="file" accept="video/*" disabled={busy} className="mt-1 block" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void inspectFile(f); }} />
+      </label>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {thumb && <img id="thumb" src={thumb} alt="" className="mt-2 w-24 rounded" />}
       <pre id="log" className="card mt-4 whitespace-pre-wrap text-xs">{lines.join("\n")}</pre>
     </main>
   );

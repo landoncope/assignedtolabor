@@ -9,6 +9,7 @@ import { CONSENT, CTAS, HOOKS, TEMPLATES, fillTemplate } from "@/lib/script";
 import { createClient } from "@/lib/supabase/client";
 import { areaLabel, type Area, type AreaSummary, type Script } from "@/lib/types";
 import { uploadVideo } from "@/lib/upload-video";
+import { thumbnailFromFile } from "@/lib/video-thumb";
 
 type Step = "welcome" | "consent" | "hook" | "body" | "cta" | "language" | "record" | "review" | "done";
 const ORDER: Step[] = ["welcome", "consent", "hook", "body", "cta", "language", "record", "review", "done"];
@@ -98,6 +99,8 @@ export default function UploadFlow({ areas, myTeams, signedIn }: { areas: Area[]
     if (!f.type.startsWith("video/")) { setError("Please choose a video file."); return; }
     setCapturePreview({ file: f, thumbnail: "", durationSeconds: 0 });
     go("review");
+    // Picked files get a thumbnail too, made in the background; the review queue showed blank tiles without one.
+    void thumbnailFromFile(f).then((t) => { if (t) setCapture((c) => (c && c.file === f && !c.thumbnail ? { ...c, thumbnail: t } : c)); });
   }
 
   async function submit() {
@@ -276,7 +279,7 @@ export default function UploadFlow({ areas, myTeams, signedIn }: { areas: Area[]
                 const v = e.currentTarget;
                 const d = Number.isFinite(v.duration) ? v.duration : 0;
                 setDims({ w: v.videoWidth, h: v.videoHeight, d });
-                if (capture && !capture.durationSeconds && d) setCapture({ ...capture, durationSeconds: Math.round(d) });
+                if (d) setCapture((c) => (c && !c.durationSeconds ? { ...c, durationSeconds: Math.round(d) } : c));
               }}
             />
           )}

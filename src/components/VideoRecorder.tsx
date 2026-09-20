@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { CaptureMeta, ZoomMode } from "@/lib/capture-meta";
+import type { CaptureMeta, Pipeline, ZoomMode } from "@/lib/capture-meta";
 import { baseMimeType, extensionFor, pickRecorderMimeType } from "@/lib/merge-clips";
+import { FROZEN_PICTURE_SECONDS, readPicture } from "@/lib/mp4-tracks";
+import { pictureLostAt, type Slice } from "@/lib/picture-watch";
 import { RECORDING_TIPS } from "@/lib/script";
 
-type Clip = { id: number; blob: Blob; thumb: string; secs: number; ms: number; frames: number };
+type Clip = { id: number; blob: Blob; thumb: string; secs: number; ms: number; frames: number; pipeline: Pipeline; pictureLostMs: number | null };
 
 // Selfie camera. Ask for LANDSCAPE numbers on purpose: iOS Safari fits width/height in
 // sensor coordinates, so 1920x1080 matches a real preset and, with the phone upright,
@@ -13,8 +15,9 @@ type Clip = { id: number; blob: Blob; thumb: string; secs: number; ms: number; f
 // makes WebKit pick the 4K mode and crop a thin slice out of the sideways frame, which
 // arrives as a wide band with a third of the vertical view (researched 2026-09-11).
 // 1080p, not 4K (2026-09-17): a 4K frame through drawImage + canvas capture + H.264
-// ran at ~15 fps on a tester's iPhone and the camera stopped delivering frames 8 s
-// before the end of a 41 s clip. Zoom is done by the camera itself where the browser
+// ran at ~15 fps on a tester's iPhone. (That clip also lost its last 8 s of picture,
+// blamed on the load at the time; it was almost certainly the iOS 26 writer bug
+// described at SLICE_MS below.) Zoom is done by the camera itself where the browser
 // exposes it (iOS 17+, Android Chrome), so 1080p loses nothing there; elsewhere the
 // canvas crops.
 // The mic is asked for raw audio. The defaults (echo cancellation and friends) put iOS
@@ -29,6 +32,42 @@ function isHandheld(): boolean {
   // iPadOS reports a Mac user agent; touch points tell them apart.
   return /iPhone|iPad|iPod|Android/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
 }
+/**
+ * Two ways to record a clip.
+ *  canvas: every frame is drawn into a 9:16 canvas and the canvas is recorded. The
+ *          default everywhere: it crops landscape webcams, zooms where the camera
+ *          cannot, and always yields upright portrait pixels with no orientation
+ *          metadata. Proven in the field on iPhones and Androids.
+ *  camera: MediaRecorder takes the camera track as it is; nothing on the page sits
+ *          between the camera and the encoder, so it is much lighter (through the canvas
+ *          the event's iPhones wrote 21 to 27 frames a second instead of 30, and some
+ *          cheap Androids only 8 to 10). Possible when the frame is already a 9:16 portrait
+ *          and any zoom is the camera's own. An iPhone file then holds the sensor's
+ *          landscape pixels plus a rotation matrix, exactly like the Camera app's
+ *          files; players, ffmpeg and Instagram honour it, and the merge keeps it.
+ *          Opt-in with `?rec=camera` on the page address until it has been tried on
+ *          real phones (written 2026-09-19, tested only with Chrome's fake camera).
+ */
+function preferredPipeline(): Pipeline {
+  if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("rec") === "camera") return "camera";
+  return "canvas";
+}
+/** True when the frame can be recorded as it is: upright and 9:16 (1080x1920, 720x1280). */
+function isPortrait916(v: HTMLVideoElement): boolean {
+  const w = v.videoWidth, h = v.videoHeight;
+  return w > 0 && h > w && Math.abs(w / h - 9 / 16) < 0.02;
+}
+/** The centre 9:16 region of a frame, tightened by `zoom`. The canvas and the thumbnails share it. */
+function portraitCrop(sw: number, sh: number, zoom: number) {
+  const aspect = 9 / 16;
+  let fullW = sw, fullH = sh;
+  if (sw / sh > aspect) fullW = Math.round(sh * aspect); else fullH = Math.round(sw / aspect);
+  const w = fullW / zoom, h = fullH / zoom;
+  // Whole pixels when unzoomed, so the canvas copies the frame one to one instead of resampling it.
+  const x = zoom === 1 ? Math.round((sw - w) / 2) : (sw - w) / 2, y = zoom === 1 ? Math.round((sh - h) / 2) : (sh - h) / 2;
+  return { x, y, w, h, fullW, fullH };
+}
+const round1 = (n: number) => Math.round(n * 10) / 10;
 function cameraConstraints(): MediaStreamConstraints {
   const size = isHandheld() ? { width: { ideal: 1920 }, height: { ideal: 1080 } } : { width: { ideal: 3840 }, height: { ideal: 2160 } };
   return {
@@ -38,8 +77,32 @@ function cameraConstraints(): MediaStreamConstraints {
 }
 // 5 Mbps, down from 8 (2026-09-18, before a 100-person event on one venue network): a
 // 60 s clip is ~37 MB instead of ~60 MB, and Instagram re-encodes to less than this anyway.
+// Android honours the figure; iPhones treat it as a hint and wrote 8 to 9 Mbps at the
+// event. Going back to 8 waits until the iOS 26 fix below is confirmed on real phones:
+// that bug bites sooner the more data there is.
 const VIDEO_BITRATE = 5_000_000;
 const AUDIO_BITRATE = 192_000;
+/**
+ * Every clip is recorded in one-second slices: `rec.start(SLICE_MS)`, never `rec.start()`.
+ *
+ * This is the fix for the frozen videos of the 2026-09-19 event, where 11 of the 12
+ * iPhones on iOS 26 (Safari and Chrome alike) produced files whose picture stops 10 to
+ * 24 s in while the sound runs on to the end; the twelfth clip was only 17 s long. The
+ * one iPhone still on iOS 18 recorded 147 s intact and no Android was affected.
+ * Without a timeslice WebKit keeps every encoded frame in memory and writes the whole
+ * recording in one burst at stop(). On iOS 26 the MP4 writer chokes on that burst after
+ * the first 10 to 30 s of video and then drops the rest of the picture while keeping the
+ * sound (WebKit bugs 299164 and 320943; 315091 reproduces it with a plain camera and no
+ * canvas, open as of 2026-09). With a timeslice the frames are written every second
+ * through the path that works, and at most the last second is exposed at stop. This is
+ * the workaround WebKit's own bug reports point to; as of 2026-09-19 it has not yet
+ * been confirmed on a real iPhone, which is what the file check below is for.
+ * Nothing on the page can see the loss happen: the camera, the preview and the draw
+ * loop were healthy in every case. So the finished file is checked instead
+ * (src/lib/mp4-tracks.ts), and the slices are watched while recording
+ * (src/lib/picture-watch.ts). Safari sends empty slices in between; they are skipped.
+ */
+const SLICE_MS = 1000;
 // The browser gets the front camera's full wide field of view, which reads as "0.5x"
 // next to the Camera app's cropped selfie framing. Phones and tablets therefore start
 // at 1.5x; laptop and desktop webcams have a normal field of view and start at 1x
@@ -89,6 +152,9 @@ export default function VideoRecorder({
   const drawRafRef = useRef<number | null>(null);
   const watchdogRef = useRef<number | null>(null);
   const canvasStreamRef = useRef<MediaStream | null>(null);
+  const pictureLostRef = useRef<number | null>(null);
+  // File checks still running (one per clip); Done waits for them.
+  const checksRef = useRef<Promise<void>[]>([]);
   const clipsRef = useRef<Clip[]>([]);
   // Field diagnostics, uploaded with the video (CaptureMeta): reviewers see them.
   const diagRef = useRef({ camera: "", recorded: "", events: [] as string[], frames: 0, repaints: 0 });
@@ -107,21 +173,32 @@ export default function VideoRecorder({
   const [showScript, setShowScript] = useState(true);
   const [zoom, setZoom] = useState<number>(defaultZoom);
   const [zoomMode, setZoomMode] = useState<ZoomMode>("canvas");
+  const [pipelinePref] = useState<Pipeline>(preferredPipeline);
   const zoomRef = useRef<number>(zoom);
   zoomRef.current = zoom;
-  // With the camera zooming, the preview and the canvas use the frame as is.
-  const cropZoom = zoomMode === "native" ? 1 : zoom;
+  // With the camera zooming, the preview and the canvas use the frame as is. The camera
+  // pipeline cannot crop at all, so there the zoom is the camera's or none.
+  const cropZoom = zoomMode === "native" || pipelinePref === "camera" ? 1 : zoom;
+  const zoomControl = zoomMode === "native" || pipelinePref === "canvas";
   const cropZoomRef = useRef(cropZoom);
   cropZoomRef.current = cropZoom;
   clipsRef.current = clips;
 
-  function logEvent(what: string) {
+  /** Adds a line to the diagnostics that travel with the upload. */
+  function note(line: string) {
     const d = diagRef.current;
     if (d.events.length >= MAX_EVENTS) return;
+    d.events.push(line);
+    console.debug(`[recorder] ${line}`);
+  }
+  function logEvent(what: string) {
     const rec = recorderRef.current?.state === "recording";
-    const at = rec ? `${((Date.now() - clipStartRef.current) / 1000).toFixed(1)}s into clip ${clipIdRef.current + 1}` : "between clips";
-    d.events.push(`${at}: ${what}`);
-    console.debug(`[recorder] ${at}: ${what}`);
+    note(`${rec ? `${((Date.now() - clipStartRef.current) / 1000).toFixed(1)}s into clip ${clipIdRef.current + 1}` : "between clips"}: ${what}`);
+  }
+  function pictureLostMessage(atMs: number, clipEnded: boolean): string {
+    const at = Math.round(atMs / 1000);
+    const when = `${Math.floor(at / 60)}:${String(at % 60).padStart(2, "0")}`;
+    return `${clipEnded ? `The picture stopped recording at ${when}, so that clip was ended.` : `The picture in that clip freezes at ${when} while the sound carries on.`} This is a fault in some phones' browsers, not something you did. Delete the clip and try again, or tap Cancel, record with your phone's camera app, and choose “Upload a video I already have”.`;
   }
 
   function stopDrawing() {
@@ -171,6 +248,8 @@ export default function VideoRecorder({
     }
     nativeZoomRef.current = null;
     setZoomMode("canvas");
+    // No camera zoom and no cropping on the camera pipeline: it records at 1x (iOS 16 and older).
+    if (pipelinePref === "camera") setZoom(1);
   }
   function attach(stream: MediaStream) {
     streamRef.current = stream;
@@ -233,68 +312,45 @@ export default function VideoRecorder({
     introTimerRef.current = setTimeout(() => { setTips("fade"); runCountdown(3); }, 2200);
   }
 
+  /**
+   * The thumbnail shows what the file shows: the same 9:16 crop and the true image. The
+   * preview is a mirror (CSS) but the recording never was, and until 2026-09-19 the
+   * thumbnails copied the mirror, so posters in the review queue flipped when played.
+   */
   function captureThumb(width = 240): string {
     const v = videoRef.current;
-    if (!v || !v.videoWidth) return "";
+    if (!v || !v.videoWidth || !v.videoHeight) return "";
+    const crop = portraitCrop(v.videoWidth, v.videoHeight, cropZoomRef.current);
     const c = document.createElement("canvas");
-    c.width = width; c.height = Math.round((width * v.videoHeight) / v.videoWidth);
+    c.width = width; c.height = Math.round((width * 16) / 9);
     const ctx = c.getContext("2d");
     if (!ctx) return "";
-    ctx.translate(c.width, 0); ctx.scale(-1, 1); // match the mirrored preview
-    try { ctx.drawImage(v, 0, 0, c.width, c.height); } catch { return ""; }
+    try { ctx.drawImage(v, crop.x, crop.y, crop.w, crop.h, 0, 0, c.width, c.height); } catch { return ""; }
     return c.toDataURL("image/jpeg", 0.6);
   }
   /**
-   * What gets recorded is a 9:16 portrait canvas showing exactly the centre crop the
-   * preview shows (object-fit: cover). Phones hand us the sensor's wide frame with a
-   * rotation tag, and recording that directly gave landscape video even when the phone
-   * was upright. Drawing through a canvas makes the output portrait on every device,
-   * with no orientation metadata to get wrong. Falls back to the raw stream where
-   * canvas capture is unavailable.
+   * Follows the camera's frames while a clip records: counts them for the diagnostics,
+   * paints them on the canvas pipeline, and notes when they stop arriving. Driven by
+   * each new camera frame where supported, else by animation frames. The next callback
+   * is armed before painting so nothing drawImage does can break the chain.
    */
-  function startPortraitCapture(): MediaStream | null {
-    const v = videoRef.current, cam = streamRef.current;
-    if (!v || !cam || !v.videoWidth || !v.videoHeight) return null;
-    const canvas = canvasRef.current ?? document.createElement("canvas");
-    if (typeof canvas.captureStream !== "function") return null;
-    canvasRef.current = canvas;
-    const sw = v.videoWidth, sh = v.videoHeight, aspect = 9 / 16;
-    let cropW = sw, cropH = sh;
-    if (sw / sh > aspect) cropW = Math.round(sh * aspect); else cropH = Math.round(sw / aspect);
-    const sx = Math.round((sw - cropW) / 2), sy = Math.round((sh - cropH) / 2);
-    // Native crop size up to 1080 wide, even dimensions for the H.264 encoder.
-    const cw = Math.min(1080, cropW) & ~1;
-    const ch = Math.round(cw * 16 / 9) & ~1;
-    canvas.width = cw; canvas.height = ch;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-    diagRef.current.camera = `${sw}x${sh}`;
-    diagRef.current.recorded = `${cw}x${ch}`;
-    console.debug(`[recorder] camera ${sw}×${sh} · recording ${cw}×${ch} · zoom ${zoomRef.current}× by ${nativeZoomRef.current !== null ? "the camera" : "cropping"}`);
-    const paint = () => {
-      const z = cropZoomRef.current;
-      const zw = cropW / z, zh = cropH / z;
-      try { ctx.drawImage(v, sx + (cropW - zw) / 2, sy + (cropH - zh) / 2, zw, zh, 0, 0, cw, ch); } catch { /* no frame to draw yet */ }
-    };
-    // Draw on each new camera frame where supported, else every animation frame. The
-    // zoom is read per frame so the control works mid-clip. The next callback is armed
-    // before painting so nothing drawImage does can break the chain.
+  function startFrameLoop(v: HTMLVideoElement, paint: (() => void) | null) {
     const rvfc = "requestVideoFrameCallback" in v ? (v as HTMLVideoElement & { requestVideoFrameCallback: (cb: () => void) => number }) : null;
+    if (!rvfc && !paint) return; // animation frames would count the screen, not the camera
     let lastFrameAt = performance.now();
     let stalled = false;
-    const draw = () => {
-      drawRafRef.current = rvfc ? rvfc.requestVideoFrameCallback(draw) : requestAnimationFrame(draw);
+    const tick = () => {
+      drawRafRef.current = rvfc ? rvfc.requestVideoFrameCallback(tick) : requestAnimationFrame(tick);
       lastFrameAt = performance.now();
       if (stalled) { stalled = false; logEvent("camera frames resumed"); }
-      paint();
+      paint?.();
       diagRef.current.frames++;
     };
-    draw();
-    // Watchdog (2026-09-17): a tester's iPhone stopped delivering frames 8 s before the
-    // end of a 41 s clip while the mic kept going, so the file's video track ended
-    // early and players showed a frozen picture. When frames stop, keep painting the
-    // last one so the recorded track stays in step with the audio, nudge a paused
-    // preview back to playing, and note it for the reviewers.
+    tick();
+    // Watchdog (2026-09-17): when camera frames stop (an iPhone did this 147 s into a
+    // clip at the 2026-09-19 event), the canvas keeps painting the last one so the
+    // recorded track stays in step with the audio, a paused preview is nudged back to
+    // playing, and the reviewers get a note.
     watchdogRef.current = window.setInterval(() => {
       if (performance.now() - lastFrameAt < STALL_MS) return;
       if (!stalled) {
@@ -302,37 +358,111 @@ export default function VideoRecorder({
         logEvent(`camera frames stopped (${v.paused ? "preview paused" : v.srcObject ? "no new frames" : "no stream"})`);
       }
       if (v.paused && v.srcObject) v.play().catch(() => {});
-      paint();
+      paint?.();
       diagRef.current.repaints++;
     }, 100);
+  }
+  /** Camera pipeline: the recorder takes the camera's own stream; the page only watches. */
+  function startCameraWatch() {
+    const v = videoRef.current;
+    if (!v) return;
+    diagRef.current.camera = `${v.videoWidth}x${v.videoHeight}`;
+    diagRef.current.recorded = "";
+    console.debug(`[recorder] camera ${v.videoWidth}×${v.videoHeight} · recording the camera track · zoom ${zoomRef.current}× by ${nativeZoomRef.current !== null ? "the camera" : "nothing (1×)"}`);
+    startFrameLoop(v, null);
+  }
+  /**
+   * Canvas pipeline: a 9:16 portrait canvas showing exactly the centre crop the preview
+   * shows (object-fit: cover), so the output is portrait pixels with no orientation
+   * metadata whatever shape the camera's frame has. Returns null where canvas capture
+   * is unavailable; the caller then records the raw stream. The canvas is never
+   * attached to the page; WebKit has captured detached canvases properly since 2022
+   * (bug 240380), and the 2026-09-19 freeze was not the canvas (see SLICE_MS).
+   */
+  function startCanvasCapture(): MediaStream | null {
+    const v = videoRef.current, cam = streamRef.current;
+    if (!v || !cam || !v.videoWidth || !v.videoHeight) return null;
+    const canvas = canvasRef.current ?? document.createElement("canvas");
+    if (typeof canvas.captureStream !== "function") return null;
+    canvasRef.current = canvas;
+    const sw = v.videoWidth, sh = v.videoHeight;
+    const full = portraitCrop(sw, sh, 1);
+    // Native crop size up to 1080 wide, even dimensions for the H.264 encoder.
+    const cw = Math.min(1080, full.fullW) & ~1;
+    const ch = Math.round(cw * 16 / 9) & ~1;
+    canvas.width = cw; canvas.height = ch;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    diagRef.current.camera = `${sw}x${sh}`;
+    diagRef.current.recorded = `${cw}x${ch}`;
+    console.debug(`[recorder] camera ${sw}×${sh} · recording ${cw}×${ch} through the canvas · zoom ${zoomRef.current}× by ${nativeZoomRef.current !== null ? "the camera" : "cropping"}`);
+    // The zoom is read per frame so the control works mid-clip.
+    const paint = () => {
+      const c = portraitCrop(sw, sh, cropZoomRef.current);
+      try { ctx.drawImage(v, c.x, c.y, c.w, c.h, 0, 0, cw, ch); } catch { /* no frame to draw yet */ }
+    };
+    startFrameLoop(v, paint);
     const canvasStream = canvas.captureStream(30);
     canvasStreamRef.current = canvasStream;
     return new MediaStream([...canvasStream.getVideoTracks(), ...cam.getAudioTracks()]);
   }
   function beginClip() {
-    if (!streamRef.current) return;
+    const cam = streamRef.current, v = videoRef.current;
+    if (!cam) return;
     setError(""); chunksRef.current = []; setSecs(0);
     clipThumbRef.current = captureThumb();
     clipStartRef.current = Date.now();
     diagRef.current.frames = 0;
+    pictureLostRef.current = null;
     const mime = pickRecorderMimeType();
     mimeRef.current = mime;
-    const source = startPortraitCapture() ?? streamRef.current;
+    // The camera's own stream when the frame needs nothing done to it, else the canvas.
+    const direct = pipelinePref === "camera" && !!v && cropZoomRef.current === 1 && isPortrait916(v);
+    const canvasStream = direct ? null : startCanvasCapture();
+    const pipeline: Pipeline = canvasStream ? "canvas" : "camera";
+    if (!canvasStream) startCameraWatch();
+    const source = canvasStream ?? cam;
     let rec: MediaRecorder;
     try { rec = new MediaRecorder(source, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: VIDEO_BITRATE, audioBitsPerSecond: AUDIO_BITRATE }); }
     catch { stopDrawing(); setError("Recording isn't supported in this browser. Try uploading a file instead."); return; }
-    rec.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+    const startedAt = performance.now();
+    const slices: Slice[] = [];
+    rec.ondataavailable = (e) => {
+      if (e.data.size > 0) chunksRef.current.push(e.data);
+      if (rec.state !== "recording" || pictureLostRef.current !== null) return;
+      slices.push({ at: performance.now() - startedAt, bytes: e.data.size });
+      const lostAt = pictureLostAt(slices);
+      if (lostAt === null) return;
+      // The file is growing by sound alone. End the clip now rather than let someone
+      // talk for two more minutes into a frozen picture.
+      pictureLostRef.current = lostAt;
+      logEvent(`picture stopped reaching the file ${(lostAt / 1000).toFixed(1)}s into the clip (${pipeline} pipeline); clip ended`);
+      rec.stop();
+    };
     rec.onstop = () => {
       stopDrawing();
       const blob = new Blob(chunksRef.current, { type: baseMimeType(rec.mimeType || mimeRef.current) || "video/webm" });
       const ms = Date.now() - clipStartRef.current;
       const dur = Math.max(1, Math.round(ms / 1000));
       const frames = diagRef.current.frames;
-      if (blob.size > 0) setClips((cs) => [...cs, { id: ++clipIdRef.current, blob, thumb: clipThumbRef.current, secs: dur, ms, frames }]);
+      const pictureLostMs = pictureLostRef.current;
+      if (blob.size > 0) {
+        const id = ++clipIdRef.current;
+        setClips((cs) => [...cs, { id, blob, thumb: clipThumbRef.current, secs: dur, ms, frames, pipeline, pictureLostMs }]);
+        // Ask the file itself whether its picture runs to the end (see SLICE_MS).
+        checksRef.current.push(readPicture(blob).then((r) => {
+          if (!r || r.longestHold.seconds <= FROZEN_PICTURE_SECONDS) return;
+          note(`clip ${id}: the file's picture freezes ${r.longestHold.at.toFixed(1)}s in, for ${r.longestHold.seconds.toFixed(1)}s (${pipeline} pipeline)`);
+          const lostMs = Math.round(r.longestHold.at * 1000);
+          setClips((cs) => cs.map((c) => (c.id === id && c.pictureLostMs === null ? { ...c, pictureLostMs: lostMs } : c)));
+          setError(pictureLostMessage(lostMs, false));
+        }).catch(() => {}));
+      }
+      if (pictureLostMs !== null) setError(pictureLostMessage(pictureLostMs, true));
       setCam("live");
     };
     recorderRef.current = rec;
-    rec.start();
+    rec.start(SLICE_MS);
     setCam("recording");
   }
   function tapRecord() {
@@ -348,6 +478,7 @@ export default function VideoRecorder({
   function startOver() {
     teardown();
     setClips([]); setCountdown(null); setTips("off"); setSecs(0); setError(""); setMerging(false);
+    checksRef.current = [];
     firstClipRef.current = true;
     startCamera();
   }
@@ -358,9 +489,10 @@ export default function VideoRecorder({
     return {
       ua: navigator.userAgent,
       camera: d.camera || null,
-      recorded: d.recorded || null,
+      recorded: cs.some((c) => c.pipeline === "canvas") ? d.recorded || null : null,
+      pipeline: cs.every((c) => c.pipeline === "camera") ? "camera" : cs.every((c) => c.pipeline === "canvas") ? "canvas" : "mixed",
       codec: mimeRef.current || null,
-      fps: ms > 0 && d.recorded ? Math.round((frames / ms) * 1000) : null,
+      fps: ms > 0 && frames > 0 ? Math.round((frames / ms) * 1000) : null,
       zoom: zoomRef.current,
       zoomMode: nativeZoomRef.current !== null ? "native" : "canvas",
       clips: cs.length,
@@ -371,19 +503,24 @@ export default function VideoRecorder({
   }
   async function done() {
     if (merging || clips.length === 0 || cam === "recording") return;
-    const total = clips.reduce((a, c) => a + c.secs, 0);
-    const thumbnail = clips[0].thumb;
-    const meta = buildMeta(clips);
-    if (clips.length === 1) {
-      const type = clips[0].blob.type || "video/webm";
-      teardown();
-      onCapture({ file: new File([clips[0].blob], `recording-${Date.now()}.${extensionFor(type)}`, { type }), thumbnail, durationSeconds: total, meta });
-      return;
-    }
     setMerging(true); setError("");
+    await Promise.allSettled(checksRef.current);
+    const kept = clipsRef.current;
+    if (kept.length === 0) { setMerging(false); return; }
+    const total = kept.reduce((a, c) => a + c.secs, 0);
+    const thumbnail = kept[0].thumb;
     try {
-      const { mergeClips } = await import("@/lib/merge-clips");
-      const file = await mergeClips(clips.map((c) => c.blob));
+      let file: File;
+      if (kept.length === 1) {
+        const type = kept[0].blob.type || "video/webm";
+        file = new File([kept[0].blob], `recording-${Date.now()}.${extensionFor(type)}`, { type });
+      } else {
+        const { mergeClips } = await import("@/lib/merge-clips");
+        file = await mergeClips(kept.map((c) => c.blob));
+      }
+      // The finished file's own account of its picture goes to the reviewers with the upload.
+      const r = await readPicture(file);
+      const meta: CaptureMeta = { ...buildMeta(kept), picture: r ? { seconds: round1(r.picture), sound: round1(r.sound), longestHold: round1(r.longestHold.seconds), holdAt: round1(r.longestHold.at) } : null };
       teardown();
       onCapture({ file, thumbnail, durationSeconds: total, meta });
     } catch {
@@ -414,7 +551,7 @@ export default function VideoRecorder({
             {showScript ? "Hide" : "Show script"}
           </button>
         )}
-        {cam !== "error" && !merging && (
+        {cam !== "error" && !merging && zoomControl && (
           <div className="absolute right-2 top-1/2 flex -translate-y-1/2 flex-col overflow-hidden rounded-full bg-black/60 text-[11px] font-semibold text-white" role="group" aria-label="Zoom">
             {ZOOM_LEVELS.map((z) => (
               <button key={z} onClick={() => { setZoom(z); void applyZoom(z); }} aria-pressed={zoom === z} className={`px-2 py-1.5 ${zoom === z ? "bg-white/25" : ""}`}>{z}×</button>
@@ -448,7 +585,7 @@ export default function VideoRecorder({
         {merging && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/75 p-6 text-center">
             <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-white/25 border-t-white" />
-            <div className="text-sm font-semibold text-white">Putting your clips together…</div>
+            <div className="text-sm font-semibold text-white">{clips.length > 1 ? "Putting your clips together…" : "Finishing…"}</div>
           </div>
         )}
       </div>
@@ -456,10 +593,10 @@ export default function VideoRecorder({
       {clips.length > 0 && (
         <div className="flex items-center gap-2 overflow-x-auto py-1">
           {clips.map((c, i) => (
-            <div key={c.id} className="relative h-16 w-11 shrink-0 overflow-hidden rounded-md border border-white/40 bg-neutral-800">
+            <div key={c.id} className={`relative h-16 w-11 shrink-0 overflow-hidden rounded-md border bg-neutral-800 ${c.pictureLostMs !== null ? "border-red-400" : "border-white/40"}`}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               {c.thumb && <img src={c.thumb} alt={`Clip ${i + 1}`} className="h-full w-full object-cover" />}
-              <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-center text-[10px] text-white">{c.secs}s</span>
+              <span className={`absolute bottom-0 left-0 right-0 text-center text-[10px] text-white ${c.pictureLostMs !== null ? "bg-red-600/80" : "bg-black/60"}`}>{c.pictureLostMs !== null ? "froze" : `${c.secs}s`}</span>
               <button onClick={() => deleteClip(c.id)} aria-label={`Delete clip ${i + 1}`} className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-bl-md bg-black/80 text-xs text-white">×</button>
             </div>
           ))}
@@ -472,7 +609,7 @@ export default function VideoRecorder({
       {error && <p className="text-center text-sm text-red-400">{error}</p>}
       <div className="flex gap-2">
         {clips.length > 0 && <button onClick={startOver} disabled={merging} className="btn border border-neutral-600 text-neutral-300">Start over</button>}
-        <button onClick={done} disabled={doneDisabled} className="btn-primary flex-1 py-3">{merging ? "Combining…" : "Done"}</button>
+        <button onClick={done} disabled={doneDisabled} className="btn-primary flex-1 py-3">{merging ? (clips.length > 1 ? "Combining…" : "Finishing…") : "Done"}</button>
       </div>
       {onCancel && <button onClick={() => { teardown(); onCancel(); }} disabled={merging} className="self-center text-sm font-semibold text-sky-400">Cancel</button>}
     </div>
