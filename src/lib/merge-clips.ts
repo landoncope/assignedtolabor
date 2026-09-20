@@ -7,6 +7,8 @@
 // be the ESM build and every URL must be a plain same-origin URL (blob: URLs are not
 // reliably importable from module workers, especially on Safari).
 import type { FFmpeg } from "@ffmpeg/ffmpeg";
+import { restoreMp4Orientation } from "./mp4-orientation";
+import { readTrackOrder } from "./mp4-tracks";
 
 let ffmpegPromise: Promise<FFmpeg> | null = null;
 const recentLogs: string[] = [];
@@ -85,6 +87,29 @@ export async function mergeClips(blobs: Blob[]): Promise<File> {
     await ff.writeFile(name, new Uint8Array(await blobs[i].arrayBuffer()));
     names.push(name);
   }
+  // Chrome writes a recording's tracks in whichever order their first data arrived, so
+  // one clip can be video-then-audio and the next audio-then-video. ffmpeg's concat pairs
+  // streams by position: a clip in the other order had its picture fed into the sound
+  // track, and the merged file lost that clip while ffmpeg reported success (2 of 8
+  // two-clip runs in desktop Chrome, found 2026-09-19). Clips that disagree with the
+  // first are rewritten, by stream copy, in the first clip's order.
+  if (inExt === "mp4") {
+    const orders = await Promise.all(blobs.map((b) => readTrackOrder(b)));
+    const want = orders[0];
+    for (let i = 1; want && i < blobs.length; i++) {
+      const got = orders[i];
+      if (!got || got.join() === want.join()) continue;
+      const maps = want.flatMap((t) => (t === "vide" ? ["-map", "0:v:0"] : t === "soun" ? ["-map", "0:a:0"] : []));
+      const ordered = `clip${i}-ordered.mp4`;
+      if ((await ff.exec(["-i", names[i], ...maps, "-c", "copy", "-strict", "-2", ordered])) === 0) {
+        console.warn(`[merge-clips] clip ${i + 1} had its tracks as ${got.join("+")}; rewritten as ${want.join("+")}`);
+        try { await ff.deleteFile(names[i]); } catch { /* ignore */ }
+        names[i] = ordered;
+      } else {
+        console.warn(`[merge-clips] could not reorder the tracks of clip ${i + 1}\n${recentLogs.slice(-6).join("\n")}`);
+      }
+    }
+  }
   await ff.writeFile("list.txt", new TextEncoder().encode(names.map((n) => `file '${n}'`).join("\n")));
   const concat = ["-f", "concat", "-safe", "0", "-fflags", "+genpts", "-i", "list.txt"];
 
@@ -109,6 +134,13 @@ export async function mergeClips(blobs: Blob[]): Promise<File> {
     inExt === "mp4" ? ["-c", "copy", "-strict", "-2", "-movflags", "+faststart"] : ["-c", "copy"],
     `out.${inExt}`,
   );
+  if (data && inExt === "mp4") {
+    // iPhone clips recorded straight from the camera carry a rotation matrix. The copy
+    // keeps it (checked against this ffmpeg build 2026-09-19); this repairs it if not.
+    try {
+      if (restoreMp4Orientation(await blobs[0].slice(0, 1 << 20).arrayBuffer(), data)) console.warn("[merge-clips] the stream copy dropped the display matrix; restored it from the first clip");
+    } catch { /* a file this cannot parse is left as ffmpeg wrote it */ }
+  }
   if (!data) {
     type = "video/mp4"; ext = "mp4";
     data = await run(

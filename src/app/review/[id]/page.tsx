@@ -5,7 +5,7 @@ import Nav from "@/components/Nav";
 import VideoPlayer from "@/components/VideoPlayer";
 import { requireManager } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { describeCapture } from "@/lib/capture-meta";
+import { describeCapture, pictureWarning } from "@/lib/capture-meta";
 import { areaLabel, STATUS_LABEL, type Area, type VideoWithArea } from "@/lib/types";
 import ReviewActions from "./ReviewActions";
 
@@ -43,6 +43,7 @@ export default async function ReviewVideoPage({ params }: PageProps<"/review/[id
               </p>
               {v.capture_meta && (
                 <div className="mt-2 text-xs text-muted">
+                  {pictureWarning(v.capture_meta) && <p className="mb-1 font-semibold text-red-600">{pictureWarning(v.capture_meta)}</p>}
                   <p>Recorded on {describeCapture(v.capture_meta)}.</p>
                   {v.capture_meta.events.length > 0 && (
                     <ul className="mt-1 list-disc pl-4">

@@ -4,7 +4,7 @@ Owner: Landon Cope (landon@highpsiproducts.com). Product owner: Travis (non-tech
 Claude owns this repo: language, dependencies, architecture, and this file. Keep CLAUDE.md
 current whenever a decision is made or reversed. Dates below are absolute (YYYY-MM-DD).
 
-## Status (2026-09-17)
+## Status (2026-09-20)
 
 **MVP is live in production at https://assignedtolabor.org.** Landon and Travis are
 admins and are testing. Working and verified: anonymous upload with portrait 9:16
@@ -18,13 +18,30 @@ delete and, after a tester's frozen video, the recorder rework (1080p capture, c
 zoom, raw mic audio, frame watchdog, per-recording diagnostics on the review page)
 shipped 2026-09-17. Teams (members apply to join a team or to start one; leads and
 admins decide; members tag uploads with their team) shipped 2026-09-17 for Travis's
-Saturday 2026-09-19 event (100+ uploads, 10+ would-be leads). Next: a real-phone
-re-test of the recorder, the event, then phase-2 Instagram API posting.
+Saturday 2026-09-19 event (100+ uploads, 10+ would-be leads).
+
+**The event (2026-09-19) ran:** 27 videos, 23 recorded in the app, no upload or sign-in
+trouble. But 11 of the 13 iPhone recordings have a frozen picture (10 to 24 s of video
+under 17 to 184 s of sound): every iPhone on iOS 26 that recorded longer than 17 s.
+Cause and fix are under "iOS 26 frozen picture" in the recorder notes below; the fix
+shipped 2026-09-20 and is NOT yet confirmed on a real iPhone. Those 11 files cannot be
+repaired (the frames were never written). Next: iPhone testers confirm the fix (every
+new recording reports on itself, see `capture_meta.picture`), then phase-2 Instagram
+API posting.
 
 ### After the 2026-09-19 event (do these, then delete this list)
 
-- Raise `VIDEO_BITRATE` back to 8 Mbps (cut to 5 only for the venue network; Landon
-  prefers 8: storage is cheap and YouTube may follow Instagram).
+- Confirm the iOS 26 fix on real iPhones: a recording of 45 s or more from an iPhone on
+  iOS 26 whose review page shows no red "picture freezes" line, and
+  `node scripts/dev/freeze-audit.mjs <since>` reporting it ok. Landon proposed emailing
+  the affected uploaders who left an address to ask for a test (list and draft given to
+  him 2026-09-20; nothing is sent without his go-ahead).
+- Only then raise `VIDEO_BITRATE` back to 8 Mbps (cut to 5 for the venue network; Landon
+  prefers 8: storage is cheap and YouTube may follow Instagram). It waits because the
+  iOS 26 bug bites sooner the more data there is, and because iPhones overshoot anyway
+  (8 to 9 Mbps written when asked for 5).
+- Try `?rec=camera` (direct camera recording, see below) on a real iPhone and a cheap
+  Android; if upright and smooth, consider making it the default for portrait frames.
 - Remind Landon to downgrade Resend from Pro (upgraded 2026-09-18) unless email volume
   stayed above ~100 a day.
 - Still open with Travis: Brady Gordon's email (Philippines lead), whether
@@ -251,6 +268,11 @@ src/lib/types.ts            row types, areaLabel(), STATUS_LABEL
 src/lib/script.ts           hooks, body templates, CTAs, consent copy
 src/lib/upload-video.ts     browser -> signed upload URL -> videos row
 src/lib/merge-clips.ts      ffmpeg.wasm clip concat (runtime copied to public/ffmpeg on postinstall)
+src/lib/mp4-tracks.ts       reads a recorded MP4's frame times on the device: frozen-picture check, track order
+src/lib/picture-watch.ts    while recording: do the one-second slices still carry picture?
+src/lib/mp4-orientation.ts  reads an MP4's rotation matrix; restores it after a merge if lost
+src/lib/video-thumb.ts      thumbnail for files picked with "Upload a video I already have"
+src/lib/capture-meta.ts     CaptureMeta: what the recorder saw, uploaded with each recording
 src/components/             Nav, VideoRecorder (multi-clip + teleprompter), VideoPlayer (signed URL)
 src/app/                    / landing, /upload flow, /qr poster, /login, /auth/*, /my,
                             /my/teams (join/start a team), /review (+/[id], /requests),
@@ -347,7 +369,7 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
     (with a small Hide/Show chip top-right), a vertical zoom pill on the right edge, the
     timer bottom-left and the record button; the clip strip with delete buttons sits
     below the frame.
-  - The recorder therefore draws each frame into a 9:16 canvas (`startPortraitCapture`
+  - The recorder therefore draws each frame into a 9:16 canvas (`startCanvasCapture`
     in `VideoRecorder.tsx`, rVFC-driven, 5 Mbps since 2026-09-18, was 8) and records that: portrait pixels, no
     rotation metadata, on every device. getUserMedia exposes the front camera's full
     wide field (reads as "0.5x" versus the Camera app), so phones and tablets start at
@@ -363,9 +385,62 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
     their largest mode, because their frame is landscape and the 9:16 slice is only as
     tall as the frame: 608x1080 from a 1080p webcam (a MacBook's built-in camera), full
     1080x1920 from a 4K one. Everyone asked for 3840x2160 until 2026-09-17, when a tester's
-    iPhone ran the 4K pipeline at ~15 fps and stopped delivering camera frames 8 s
-    before the end of a 41 s clip while the mic kept going (video track ended at 32.5 s,
-    audio at 40.8 s; found with ffprobe frame timestamps, see below).
+    iPhone ran the 4K pipeline at ~15 fps. (Its 41 s clip also ended its picture at
+    32.5 s; that was blamed on the load then and was almost certainly the iOS 26 writer
+    bug below.)
+  - **iOS 26 frozen picture (event of 2026-09-19, fixed 2026-09-20, unconfirmed on
+    hardware).** Symptom: the file's picture stops 10 to 24 s in and the sound runs to
+    the end; in the MP4 the last video sample is simply given a duration of a minute or
+    more, so both tracks report the same length. It hit 11 of the 12 iPhones on iOS 26
+    (Safari and Chrome; the twelfth clip was 17 s); the one iPhone on iOS 18 recorded
+    147 s intact; no Android. Safari 26 freezes the OS token in its user agent at
+    `18_6`/`18_7`, so read `Version/26.x`, not `iPhone OS`. Cause: we called
+    `rec.start()` with no timeslice. WebKit then holds every encoded frame in memory and
+    writes the whole recording in one burst at `stop()`; on iOS 26 the MP4 writer chokes
+    on the burst and drops the rest of the picture while keeping the sound (WebKit bugs
+    299164 and 320943; 315091 reproduces it with a plain camera, no canvas, still open).
+    It was never the canvas, the camera, GC or load: the draw loop ran at 30/s with no
+    stall in every case, which is why the 2026-09-17 watchdog saw nothing. The tester
+    freeze of 2026-09-17 (video 32.5 s of 40.8 s) was almost certainly the same bug, not
+    the 4K load it was blamed on. Fix: **`rec.start(SLICE_MS)` with 1 s slices, never
+    `rec.start()`**; frames are then written every second through the working path.
+    Safari sends empty slices in between (skipped). Three nets behind it, because the
+    page cannot see the loss happen: (1) `src/lib/mp4-tracks.ts` `readPicture()` reads
+    the finished clip's frame times on the device (moof/trun or stts, headers only, a few
+    ms) and finds the longest time one frame is held; over 1.5 s the clip gets a red
+    "froze" badge and the uploader is told to retake it or to record with the camera app
+    and use "Upload a video I already have"; (2) the same check on the final file goes
+    up as `capture_meta.picture` and the review page prints a red line when it is bad;
+    (3) `src/lib/picture-watch.ts` watches the slice sizes while recording and ends a
+    clip whose file grows by sound alone for 6 s (checked by
+    `node scripts/dev/picture-watch-check.mjs`). Audit stored files with
+    `node scripts/dev/freeze-audit.mjs [since]` (ffprobe packet times, read-only) and
+    local files with `node scripts/dev/mp4-tracks-check.mjs f.mp4`.
+  - Two pipelines (2026-09-20). `canvas` is the default everywhere and is what the
+    field has proven. `camera` (opt-in: `/upload?rec=camera`) hands MediaRecorder the
+    camera's own stream when the frame is already a 9:16 portrait and any zoom is the
+    camera's; without camera zoom it records at 1x and hides the zoom pill. It skips
+    drawImage and the canvas readback (through the canvas the event's iPhones wrote 21
+    to 27 fps and three cheap Androids 8 to 10 fps). An iPhone file is then landscape
+    pixels plus a -90 rotation matrix, like the Camera app's; the ffmpeg.wasm stream-copy
+    merge keeps the matrix (tested with synthetic clips; `restoreMp4Orientation` repairs
+    it if a build ever drops it). Tested only with Chrome's fake camera so far, never on
+    a phone: that is why it is opt-in. `capture_meta.pipeline` says which one recorded.
+  - Merge and track order (2026-09-20): Chrome writes a recording's tracks in whichever
+    order their first data arrived, so clips from one session can be video+audio and
+    audio+video. ffmpeg's concat pairs streams by position, and the mismatched clip was
+    lost from the merged file while ffmpeg reported success (2 of 8 two-clip runs in
+    desktop Chrome; nothing stored was affected, the only merged upload so far came
+    from an iPhone). `mergeClips` now reads each clip's track order and rewrites the odd
+    ones (stream copy) in the first clip's order before the concat.
+  - Thumbnails (2026-09-20): they show what the file shows, the same 9:16 crop and the
+    true image. The preview is a CSS mirror, the recording never was, and thumbnails
+    used to copy the mirror, so posters in the review queue flipped when played. Files
+    picked with "Upload a video I already have" get a thumbnail too
+    (`src/lib/video-thumb.ts`: hidden muted element, played, first frame about 1 s in;
+    "" when the browser cannot decode the file). Thumbnails stored before 2026-09-20
+    were flipped once in the database (backup in the session scratchpad, ids recorded
+    in the commit message).
   - Freeze defences (2026-09-17): the preview `<video>` has no `autoplay` attribute
     (iOS pauses autoplaying elements it decides are off screen, and WebKit bug 230922
     froze autoplaying MediaStream elements outright); `play()` is called by us and again
@@ -396,7 +471,14 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
     `node scripts/dev/headless-upload-flow.mjs http://127.0.0.1:3001 fake-cam.y4m`
     where the y4m comes from `ffmpeg -f lavfi -i testsrc2=size=640x360:rate=30 -t 3
     -pix_fmt yuv420p fake-cam.y4m`. It uploads as `uploader_name = headless-flow`;
-    delete that row, file, and anonymous user afterwards.
+    delete that row, file, and anonymous user afterwards. Options: `--no-upload` stops
+    at the review step (no captcha juggling), `--save out.mp4` writes the recorded file
+    for ffprobe, `--clip-seconds 25` for long takes, `--query rec=camera` with a
+    360x640 y4m for the camera pipeline. Run long tests under `caffeinate -dimsu`: the
+    Mac slept mid-run once and the recording lost ten seconds. Clips from disk go
+    through the real merger with `node scripts/dev/headless-merge-files.mjs
+    http://127.0.0.1:3001/dev/merge a.mp4 b.mp4` (reports orientation before and after);
+    the `/dev/merge` page also inspects one file (thumbnail plus frozen-picture check).
   - Self test: `ENABLE_DEV_PAGES=1 npx next build && ENABLE_DEV_PAGES=1 npx next start -p 3001`
     then `node scripts/dev/headless-merge-test.mjs http://127.0.0.1:3001/dev/merge`
     (records two synthetic clips in this Mac's Chrome via playwright-core, merges,
