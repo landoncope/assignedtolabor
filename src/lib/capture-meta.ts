@@ -19,6 +19,8 @@ export type CaptureMeta = {
   unsliced?: true;
   /** MediaRecorder mime type. */
   codec: string | null;
+  /** Video bits per second asked of the encoder (since 2026-09-21). Compare with file size over duration: iPhones overshoot. */
+  askedBitrate?: number;
   /** Frames drawn per second across the kept clips. */
   fps: number | null;
   zoom: number;

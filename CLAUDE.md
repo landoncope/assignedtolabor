@@ -24,27 +24,25 @@ Saturday 2026-09-19 event (100+ uploads, 10+ would-be leads).
 trouble. But 11 of the 13 iPhone recordings have a frozen picture (10 to 24 s of video
 under 17 to 184 s of sound): every iPhone on iOS 26 that recorded longer than 17 s.
 Cause and fix are under "iOS 26 frozen picture" in the recorder notes below; the fix
-shipped 2026-09-20. First evidence 2026-09-21: Landon's iPhone (iOS 26.6.1, the version
-most of the frozen phones ran) recorded a 60 s and a 20 s clip with no freeze. He
-watched them on the review step and did not send them, so there are no file numbers
-yet, and it is not proven that his phone ever had the bug (his earlier tests were all
-short). `/upload?rec=unsliced` settles that on any one phone: see below. Those 11 files
-cannot be repaired (the frames were never written). Next: an uploaded iOS 26 recording
-that passes the audit, replies from the affected uploaders (Landon emailed them
-himself on 2026-09-20/21), then phase-2 Instagram API posting.
+shipped 2026-09-20 and was PROVEN on hardware 2026-09-21: on Landon's iPhone (iOS
+26.6.1, the version most of the frozen phones ran) the old way (`/upload?rec=unsliced`)
+froze 11 s in, and the fixed recorder gave a clean 60 s and a clean 20 s clip on the
+same phone. He watched both on the review step and uploaded neither, so there are no
+file numbers from an iPhone yet; the first iPhone upload will supply them
+(`capture_meta.picture`, and size over duration against `capture_meta.askedBitrate`).
+Those 11 event files cannot be repaired (the frames were never written). Landon
+emailed the affected uploaders himself on 2026-09-20/21 and is waiting for replies.
+Next: phase-2 Instagram API posting.
 
 ### After the 2026-09-19 event (do these, then delete this list)
 
-- Confirm the iOS 26 fix on real iPhones: a recording of 45 s or more from an iPhone on
-  iOS 26 whose review page shows no red "picture freezes" line, and
-  `node scripts/dev/freeze-audit.mjs <since>` reporting it ok. Landon saw no freeze on
-  his own iOS 26.6.1 phone (2026-09-21) but sent nothing in, so this is still open. He
-  emailed the affected uploaders himself; watch for their test uploads. The decisive
-  test on one phone is the pair below under `?rec=unsliced`.
-- Only then raise `VIDEO_BITRATE` back to 8 Mbps (cut to 5 for the venue network; Landon
-  prefers 8: storage is cheap and YouTube may follow Instagram). It waits because the
-  iOS 26 bug bites sooner the more data there is, and because iPhones overshoot anyway
-  (8 to 9 Mbps written when asked for 5).
+- DONE 2026-09-21: the iOS 26 fix is proven (see Status) and the data rate is back at
+  the house rate of 8 Mbps: Android and desktop are asked for 8; iPhones and iPads are
+  still asked for 5 because they wrote 7 to 8.5 Mbps at that setting, which is the house
+  rate already. When the first iPhone uploads arrive, run
+  `node scripts/dev/freeze-audit.mjs <since>` and compare size over duration with
+  `capture_meta.askedBitrate`; if iPhones turn out to write well under 8 in slices,
+  raise `VIDEO_BITRATE_APPLE_MOBILE`.
 - Try `?rec=camera` (direct camera recording, see below) on a real iPhone and a cheap
   Android; if upright and smooth, consider making it the default for portrait frames.
 - Remind Landon to downgrade Resend from Pro (upgraded 2026-09-18) unless email volume
@@ -375,7 +373,8 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
     timer bottom-left and the record button; the clip strip with delete buttons sits
     below the frame.
   - The recorder therefore draws each frame into a 9:16 canvas (`startCanvasCapture`
-    in `VideoRecorder.tsx`, rVFC-driven, 5 Mbps since 2026-09-18, was 8) and records that: portrait pixels, no
+    in `VideoRecorder.tsx`, rVFC-driven; 8 Mbps asked of Android and desktop, 5 of iPhones
+    and iPads, which write about 8 regardless) and records that: portrait pixels, no
     rotation metadata, on every device. getUserMedia exposes the front camera's full
     wide field (reads as "0.5x" versus the Camera app), so phones and tablets start at
     1.5x; laptops and desktops start at 1x since 2026-09-18 (Landon on a MacBook: 1.5x
@@ -393,8 +392,8 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
     iPhone ran the 4K pipeline at ~15 fps. (Its 41 s clip also ended its picture at
     32.5 s; that was blamed on the load then and was almost certainly the iOS 26 writer
     bug below.)
-  - **iOS 26 frozen picture (event of 2026-09-19, fixed 2026-09-20, unconfirmed on
-    hardware).** Symptom: the file's picture stops 10 to 24 s in and the sound runs to
+  - **iOS 26 frozen picture (event of 2026-09-19, fixed 2026-09-20, proven on Landon's
+    iPhone 2026-09-21).** Symptom: the file's picture stops 10 to 24 s in and the sound runs to
     the end; in the MP4 the last video sample is simply given a duration of a minute or
     more, so both tracks report the same length. It hit 11 of the 12 iPhones on iOS 26
     (Safari and Chrome; the twelfth clip was 17 s); the one iPhone on iOS 18 recorded
@@ -426,7 +425,9 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
     from it carry `capture_meta.unsliced` and the review page and the audit label them
     as a test, so a freeze there is never read as the fix failing. If the unsliced clip
     does NOT freeze, that phone never had the bug and its clean recordings prove
-    nothing. Never link to it. Audit stored files with
+    nothing. Never link to it. Result 2026-09-21, Landon's iPhone on iOS 26.6.1:
+    unsliced froze 11 s in; sliced, 60 s and 20 s clips were clean. Keep the switch: it
+    is how to find out whether a later iOS has fixed the bug. Audit stored files with
     `node scripts/dev/freeze-audit.mjs [since]` (ffprobe packet times, read-only) and
     local files with `node scripts/dev/mp4-tracks-check.mjs f.mp4`.
   - Two pipelines (2026-09-20). `canvas` is the default everywhere and is what the
@@ -471,7 +472,7 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
     ~186 kbps AAC mono; Chrome's default is lower).
   - Diagnostics: every recording uploads `videos.capture_meta` (type `CaptureMeta` in
     `src/lib/capture-meta.ts`): device/browser from the UA, camera frame size, canvas
-    size, codec, achieved fps, zoom and whether the camera or the canvas did it, clip
+    size, codec, the data rate asked for (`askedBitrate`), achieved fps, zoom and whether the camera or the canvas did it, clip
     count, seconds of repeated frames, and timestamped events (frames stopped/resumed,
     preview paused, track muted). The review page prints it under the uploader line, so
     the next "it froze" report can be read there instead of pulling the file apart.

@@ -85,13 +85,26 @@ function cameraConstraints(): MediaStreamConstraints {
     audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
   };
 }
-// 5 Mbps, down from 8 (2026-09-18, before a 100-person event on one venue network): a
-// 60 s clip is ~37 MB instead of ~60 MB, and Instagram re-encodes to less than this anyway.
-// Android honours the figure; iPhones treat it as a hint and wrote 8 to 9 Mbps at the
-// event. Going back to 8 waits until the iOS 26 fix below is confirmed on real phones:
-// that bug bites sooner the more data there is.
-const VIDEO_BITRATE = 5_000_000;
+// The house rate is 8 Mbps (Landon: storage is cheap, and YouTube may follow Instagram).
+// It was cut to 5 for the 2026-09-19 event, 100 people on one venue network, and went
+// back on 2026-09-21 once the iOS 26 fix below was proven on a phone. Android and
+// desktop browsers honour the figure, so they are asked for 8. iPhones and iPads treat
+// it as a loose hint: asked for 5 at the event they wrote 7 to 8.5 Mbps. They are
+// therefore still asked for 5, which already gives the house rate and leaves the exact
+// setup that was proven on 2026-09-21 alone. Asking them for 8 could only make their
+// files bigger than anyone wants (a 3-minute take is ~190 MB as it is).
+const VIDEO_BITRATE = 8_000_000;
+const VIDEO_BITRATE_APPLE_MOBILE = 5_000_000;
 const AUDIO_BITRATE = 192_000;
+// iPhones and iPads. Every browser there is WebKit, whatever it is called.
+function isAppleMobile(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  return /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+}
+function videoBitrate(): number {
+  return isAppleMobile() ? VIDEO_BITRATE_APPLE_MOBILE : VIDEO_BITRATE;
+}
 /**
  * Every clip is recorded in one-second slices: `rec.start(SLICE_MS)`, never `rec.start()`.
  *
@@ -105,8 +118,10 @@ const AUDIO_BITRATE = 192_000;
  * sound (WebKit bugs 299164 and 320943; 315091 reproduces it with a plain camera and no
  * canvas, open as of 2026-09). With a timeslice the frames are written every second
  * through the path that works, and at most the last second is exposed at stop. This is
- * the workaround WebKit's own bug reports point to; as of 2026-09-19 it has not yet
- * been confirmed on a real iPhone, which is what the file check below is for.
+ * the workaround WebKit's own bug reports point to. Proven 2026-09-21 on Landon's
+ * iPhone (iOS 26.6.1, the version most of the frozen phones ran): recorded in one piece
+ * with `?rec=unsliced` the picture froze 11 s in; in slices, a 60 s and a 20 s clip on
+ * the same phone were clean.
  * Nothing on the page can see the loss happen: the camera, the preview and the draw
  * loop were healthy in every case. So the finished file is checked instead
  * (src/lib/mp4-tracks.ts), and the slices are watched while recording
@@ -379,7 +394,7 @@ export default function VideoRecorder({
     if (!v) return;
     diagRef.current.camera = `${v.videoWidth}x${v.videoHeight}`;
     diagRef.current.recorded = "";
-    console.debug(`[recorder] camera ${v.videoWidth}×${v.videoHeight} · recording the camera track · zoom ${zoomRef.current}× by ${nativeZoomRef.current !== null ? "the camera" : "nothing (1×)"}`);
+    console.debug(`[recorder] camera ${v.videoWidth}×${v.videoHeight} · recording the camera track · zoom ${zoomRef.current}× by ${nativeZoomRef.current !== null ? "the camera" : "nothing (1×)"} · asking ${videoBitrate() / 1e6} Mbps`);
     startFrameLoop(v, null);
   }
   /**
@@ -406,7 +421,7 @@ export default function VideoRecorder({
     if (!ctx) return null;
     diagRef.current.camera = `${sw}x${sh}`;
     diagRef.current.recorded = `${cw}x${ch}`;
-    console.debug(`[recorder] camera ${sw}×${sh} · recording ${cw}×${ch} through the canvas · zoom ${zoomRef.current}× by ${nativeZoomRef.current !== null ? "the camera" : "cropping"}`);
+    console.debug(`[recorder] camera ${sw}×${sh} · recording ${cw}×${ch} through the canvas · zoom ${zoomRef.current}× by ${nativeZoomRef.current !== null ? "the camera" : "cropping"} · asking ${videoBitrate() / 1e6} Mbps`);
     // The zoom is read per frame so the control works mid-clip.
     const paint = () => {
       const c = portraitCrop(sw, sh, cropZoomRef.current);
@@ -434,7 +449,7 @@ export default function VideoRecorder({
     if (!canvasStream) startCameraWatch();
     const source = canvasStream ?? cam;
     let rec: MediaRecorder;
-    try { rec = new MediaRecorder(source, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: VIDEO_BITRATE, audioBitsPerSecond: AUDIO_BITRATE }); }
+    try { rec = new MediaRecorder(source, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: videoBitrate(), audioBitsPerSecond: AUDIO_BITRATE }); }
     catch { stopDrawing(); setError("Recording isn't supported in this browser. Try uploading a file instead."); return; }
     const startedAt = performance.now();
     const slices: Slice[] = [];
@@ -504,6 +519,7 @@ export default function VideoRecorder({
       pipeline: cs.every((c) => c.pipeline === "camera") ? "camera" : cs.every((c) => c.pipeline === "canvas") ? "canvas" : "mixed",
       ...(unsliced ? { unsliced: true as const } : {}),
       codec: mimeRef.current || null,
+      askedBitrate: videoBitrate(),
       fps: ms > 0 && frames > 0 ? Math.round((frames / ms) * 1000) : null,
       zoom: zoomRef.current,
       zoomMode: nativeZoomRef.current !== null ? "native" : "canvas",

@@ -1,6 +1,6 @@
 // Drives the real /upload flow in this machine's Chrome with a fake camera: two clips,
 // merge, upload. Prints the review-screen dimensions line and the "Thank you" state.
-// Usage: node scripts/dev/headless-upload-flow.mjs <base url> <fake-cam.y4m> [name] [--query rec=camera] [--save out.mp4] [--no-upload] [--clip-seconds 2.5] [--clips 2] [--shot recording.png]
+// Usage: node scripts/dev/headless-upload-flow.mjs <base url> <fake-cam.y4m> [name] [--query rec=camera] [--save out.mp4] [--no-upload] [--clip-seconds 2.5] [--clips 2] [--shot recording.png] [--user-agent "<ua>"]
 //   --query       appended to /upload, e.g. rec=camera to record the camera track directly (needs a 9:16 portrait y4m)
 //   --save        writes the recorded (merged) file to disk from the review step, for ffprobe
 //   --no-upload   stops at the review step (captcha is enforced on the live project)
@@ -9,13 +9,13 @@ import { writeFileSync } from "node:fs";
 const argv = process.argv.slice(2);
 const opt = (flag, fallback = null) => { const i = argv.indexOf(flag); if (i < 0) return fallback; const v = argv[i + 1]; argv.splice(i, 2); return v; };
 const flag = (f) => { const i = argv.indexOf(f); if (i < 0) return false; argv.splice(i, 1); return true; };
-const query = opt("--query"), savePath = opt("--save"), shotPath = opt("--shot"), clipMs = Number(opt("--clip-seconds", "2.5")) * 1000, clipCount = Number(opt("--clips", "2")), noUpload = flag("--no-upload");
+const query = opt("--query"), savePath = opt("--save"), shotPath = opt("--shot"), userAgent = opt("--user-agent"), clipMs = Number(opt("--clip-seconds", "2.5")) * 1000, clipCount = Number(opt("--clips", "2")), noUpload = flag("--no-upload");
 const [base = "http://127.0.0.1:3001", camFile, name = "headless-flow"] = argv;
 const browser = await chromium.launch({
   channel: "chrome", headless: true,
   args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", `--use-file-for-fake-video-capture=${camFile}`, "--autoplay-policy=no-user-gesture-required"],
 });
-const context = await browser.newContext({ viewport: { width: 390, height: 844 }, permissions: ["camera", "microphone"] });
+const context = await browser.newContext({ viewport: { width: 390, height: 844 }, permissions: ["camera", "microphone"], ...(userAgent ? { userAgent } : {}) });
 const page = await context.newPage();
 page.on("pageerror", (e) => console.log("[pageerror]", e.message));
 page.on("console", (m) => {
