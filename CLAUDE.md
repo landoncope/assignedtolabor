@@ -426,7 +426,9 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
     as a test, so a freeze there is never read as the fix failing. If the unsliced clip
     does NOT freeze, that phone never had the bug and its clean recordings prove
     nothing. Never link to it. Result 2026-09-21, Landon's iPhone on iOS 26.6.1:
-    unsliced froze 11 s in; sliced, 60 s and 20 s clips were clean. Keep the switch: it
+    unsliced froze 11 s in, and the clip got the red "froze" badge and the message, so
+    the on-device file check is proven on a real iPhone too; sliced, 60 s and 20 s
+    clips were clean. Keep the switch: it
     is how to find out whether a later iOS has fixed the bug. Audit stored files with
     `node scripts/dev/freeze-audit.mjs [since]` (ffprobe packet times, read-only) and
     local files with `node scripts/dev/mp4-tracks-check.mjs f.mp4`.
