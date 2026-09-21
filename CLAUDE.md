@@ -4,7 +4,7 @@ Owner: Landon Cope (landon@highpsiproducts.com). Product owner: Travis (non-tech
 Claude owns this repo: language, dependencies, architecture, and this file. Keep CLAUDE.md
 current whenever a decision is made or reversed. Dates below are absolute (YYYY-MM-DD).
 
-## Status (2026-09-20)
+## Status (2026-09-21)
 
 **MVP is live in production at https://assignedtolabor.org.** Landon and Travis are
 admins and are testing. Working and verified: anonymous upload with portrait 9:16
@@ -24,18 +24,23 @@ Saturday 2026-09-19 event (100+ uploads, 10+ would-be leads).
 trouble. But 11 of the 13 iPhone recordings have a frozen picture (10 to 24 s of video
 under 17 to 184 s of sound): every iPhone on iOS 26 that recorded longer than 17 s.
 Cause and fix are under "iOS 26 frozen picture" in the recorder notes below; the fix
-shipped 2026-09-20 and is NOT yet confirmed on a real iPhone. Those 11 files cannot be
-repaired (the frames were never written). Next: iPhone testers confirm the fix (every
-new recording reports on itself, see `capture_meta.picture`), then phase-2 Instagram
-API posting.
+shipped 2026-09-20. First evidence 2026-09-21: Landon's iPhone (iOS 26.6.1, the version
+most of the frozen phones ran) recorded a 60 s and a 20 s clip with no freeze. He
+watched them on the review step and did not send them, so there are no file numbers
+yet, and it is not proven that his phone ever had the bug (his earlier tests were all
+short). `/upload?rec=unsliced` settles that on any one phone: see below. Those 11 files
+cannot be repaired (the frames were never written). Next: an uploaded iOS 26 recording
+that passes the audit, replies from the affected uploaders (Landon emailed them
+himself on 2026-09-20/21), then phase-2 Instagram API posting.
 
 ### After the 2026-09-19 event (do these, then delete this list)
 
 - Confirm the iOS 26 fix on real iPhones: a recording of 45 s or more from an iPhone on
   iOS 26 whose review page shows no red "picture freezes" line, and
-  `node scripts/dev/freeze-audit.mjs <since>` reporting it ok. Landon proposed emailing
-  the affected uploaders who left an address to ask for a test (list and draft given to
-  him 2026-09-20; nothing is sent without his go-ahead).
+  `node scripts/dev/freeze-audit.mjs <since>` reporting it ok. Landon saw no freeze on
+  his own iOS 26.6.1 phone (2026-09-21) but sent nothing in, so this is still open. He
+  emailed the affected uploaders himself; watch for their test uploads. The decisive
+  test on one phone is the pair below under `?rec=unsliced`.
 - Only then raise `VIDEO_BITRATE` back to 8 Mbps (cut to 5 for the venue network; Landon
   prefers 8: storage is cheap and YouTube may follow Instagram). It waits because the
   iOS 26 bug bites sooner the more data there is, and because iPhones overshoot anyway
@@ -413,7 +418,15 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
     up as `capture_meta.picture` and the review page prints a red line when it is bad;
     (3) `src/lib/picture-watch.ts` watches the slice sizes while recording and ends a
     clip whose file grows by sound alone for 6 s (checked by
-    `node scripts/dev/picture-watch-check.mjs`). Audit stored files with
+    `node scripts/dev/picture-watch-check.mjs`). Proof on a phone in hand (2026-09-21):
+    `/upload?rec=unsliced` records the old way on purpose, in one piece, with a red
+    "Test: old recorder, may freeze" chip in the frame. On an iOS 26 phone a clip of
+    40 s or more should come back with the red "froze" badge (the old bug, and the
+    safety net catching it), and the same clip on the normal link should not. Uploads
+    from it carry `capture_meta.unsliced` and the review page and the audit label them
+    as a test, so a freeze there is never read as the fix failing. If the unsliced clip
+    does NOT freeze, that phone never had the bug and its clean recordings prove
+    nothing. Never link to it. Audit stored files with
     `node scripts/dev/freeze-audit.mjs [since]` (ffprobe packet times, read-only) and
     local files with `node scripts/dev/mp4-tracks-check.mjs f.mp4`.
   - Two pipelines (2026-09-20). `canvas` is the default everywhere and is what the

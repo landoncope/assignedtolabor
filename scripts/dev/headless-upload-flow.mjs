@@ -1,6 +1,6 @@
 // Drives the real /upload flow in this machine's Chrome with a fake camera: two clips,
 // merge, upload. Prints the review-screen dimensions line and the "Thank you" state.
-// Usage: node scripts/dev/headless-upload-flow.mjs <base url> <fake-cam.y4m> [name] [--query rec=camera] [--save out.mp4] [--no-upload] [--clip-seconds 2.5] [--clips 2]
+// Usage: node scripts/dev/headless-upload-flow.mjs <base url> <fake-cam.y4m> [name] [--query rec=camera] [--save out.mp4] [--no-upload] [--clip-seconds 2.5] [--clips 2] [--shot recording.png]
 //   --query       appended to /upload, e.g. rec=camera to record the camera track directly (needs a 9:16 portrait y4m)
 //   --save        writes the recorded (merged) file to disk from the review step, for ffprobe
 //   --no-upload   stops at the review step (captcha is enforced on the live project)
@@ -9,7 +9,7 @@ import { writeFileSync } from "node:fs";
 const argv = process.argv.slice(2);
 const opt = (flag, fallback = null) => { const i = argv.indexOf(flag); if (i < 0) return fallback; const v = argv[i + 1]; argv.splice(i, 2); return v; };
 const flag = (f) => { const i = argv.indexOf(f); if (i < 0) return false; argv.splice(i, 1); return true; };
-const query = opt("--query"), savePath = opt("--save"), clipMs = Number(opt("--clip-seconds", "2.5")) * 1000, clipCount = Number(opt("--clips", "2")), noUpload = flag("--no-upload");
+const query = opt("--query"), savePath = opt("--save"), shotPath = opt("--shot"), clipMs = Number(opt("--clip-seconds", "2.5")) * 1000, clipCount = Number(opt("--clips", "2")), noUpload = flag("--no-upload");
 const [base = "http://127.0.0.1:3001", camFile, name = "headless-flow"] = argv;
 const browser = await chromium.launch({
   channel: "chrome", headless: true,
@@ -41,6 +41,7 @@ const src = await page.evaluate(() => { const v = document.querySelector("video"
 console.log("camera stream:", src);
 await page.getByRole("button", { name: "Record clip" }).click();   // tips + countdown, then records
 await page.getByRole("button", { name: "Stop clip" }).waitFor({ timeout: 15000 });
+if (shotPath) { await t(800); await page.screenshot({ path: shotPath }); }
 await t(clipMs);
 await page.getByRole("button", { name: "Stop clip" }).click();
 await t(1000);

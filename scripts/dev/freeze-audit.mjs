@@ -42,6 +42,6 @@ for (const r of rows) {
   const verdict = gap === null ? "no audio or no video" : gap > 1.5 ? `FROZE at ${v.end.toFixed(1)}s (${gap.toFixed(0)}s of sound without picture)` : "ok";
   if (gap !== null && gap > 1.5) frozen++;
   const m = r.capture_meta;
-  console.log([r.id.slice(0, 8), r.uploader_name ?? "-", device(m?.ua), m ? (m.pipeline ?? "canvas") : "-", v.end?.toFixed(1) ?? "-", a.end?.toFixed(1) ?? "-", verdict].join(" | "));
+  console.log([r.id.slice(0, 8), r.uploader_name ?? "-", device(m?.ua), m ? `${m.pipeline ?? "canvas"}${m.unsliced ? " UNSLICED TEST" : ""}` : "-", v.end?.toFixed(1) ?? "-", a.end?.toFixed(1) ?? "-", verdict].join(" | "));
 }
 console.log(`\n${frozen} of ${rows.length} froze`);

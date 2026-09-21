@@ -52,6 +52,16 @@ function preferredPipeline(): Pipeline {
   if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("rec") === "camera") return "camera";
   return "canvas";
 }
+/**
+ * `?rec=unsliced` records the way the recorder did until 2026-09-20: in one piece,
+ * written at stop. It exists to bring the iOS 26 freeze back on purpose on a phone in
+ * hand, so that the slices (the fix) and the frozen-picture check (the safety net) can
+ * be proven on real hardware: the same phone should freeze with it and not without it.
+ * The frame shows a red "Test" chip and the upload says so. Never link to it.
+ */
+function recordUnsliced(): boolean {
+  return typeof window !== "undefined" && new URLSearchParams(window.location.search).get("rec") === "unsliced";
+}
 /** True when the frame can be recorded as it is: upright and 9:16 (1080x1920, 720x1280). */
 function isPortrait916(v: HTMLVideoElement): boolean {
   const w = v.videoWidth, h = v.videoHeight;
@@ -174,6 +184,7 @@ export default function VideoRecorder({
   const [zoom, setZoom] = useState<number>(defaultZoom);
   const [zoomMode, setZoomMode] = useState<ZoomMode>("canvas");
   const [pipelinePref] = useState<Pipeline>(preferredPipeline);
+  const [unsliced] = useState<boolean>(recordUnsliced);
   const zoomRef = useRef<number>(zoom);
   zoomRef.current = zoom;
   // With the camera zooming, the preview and the canvas use the frame as is. The camera
@@ -462,7 +473,7 @@ export default function VideoRecorder({
       setCam("live");
     };
     recorderRef.current = rec;
-    rec.start(SLICE_MS);
+    if (unsliced) rec.start(); else rec.start(SLICE_MS); // one piece only in the ?rec=unsliced test mode
     setCam("recording");
   }
   function tapRecord() {
@@ -491,6 +502,7 @@ export default function VideoRecorder({
       camera: d.camera || null,
       recorded: cs.some((c) => c.pipeline === "canvas") ? d.recorded || null : null,
       pipeline: cs.every((c) => c.pipeline === "camera") ? "camera" : cs.every((c) => c.pipeline === "canvas") ? "canvas" : "mixed",
+      ...(unsliced ? { unsliced: true as const } : {}),
       codec: mimeRef.current || null,
       fps: ms > 0 && frames > 0 ? Math.round((frames / ms) * 1000) : null,
       zoom: zoomRef.current,
@@ -557,6 +569,9 @@ export default function VideoRecorder({
               <button key={z} onClick={() => { setZoom(z); void applyZoom(z); }} aria-pressed={zoom === z} className={`px-2 py-1.5 ${zoom === z ? "bg-white/25" : ""}`}>{z}×</button>
             ))}
           </div>
+        )}
+        {unsliced && cam !== "error" && (
+          <div className="pointer-events-none absolute bottom-24 left-3 rounded-full bg-red-600/90 px-2.5 py-1 text-[11px] font-semibold text-white">Test: old recorder, may freeze</div>
         )}
         {recording && (
           <div className="absolute left-3 bottom-6 flex items-center gap-1.5 rounded-full bg-black/60 px-2.5 py-1 text-xs font-semibold text-white">

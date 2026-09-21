@@ -15,6 +15,8 @@ export type CaptureMeta = {
   recorded: string | null;
   /** How the clips were recorded (absent before 2026-09-19, when everything went through the canvas). */
   pipeline?: Pipeline | "mixed";
+  /** Recorded in one piece on purpose (`?rec=unsliced`, the pre-2026-09-20 way) to reproduce the iOS 26 freeze. A freeze here is the old bug, not a failure of the fix. */
+  unsliced?: true;
   /** MediaRecorder mime type. */
   codec: string | null;
   /** Frames drawn per second across the kept clips. */
@@ -59,6 +61,7 @@ export function describeCapture(m: CaptureMeta): string {
   if (m.camera) parts.push(`camera ${m.camera}`);
   if (m.recorded && m.recorded !== m.camera) parts.push(`recorded ${m.recorded}`);
   if (m.pipeline) parts.push(m.pipeline === "camera" ? "straight from the camera" : m.pipeline === "canvas" ? "through the canvas" : "camera and canvas clips");
+  if (m.unsliced) parts.push("TEST MODE: recorded in one piece on purpose, the old way");
   if (m.fps !== null) parts.push(`${m.fps} fps`);
   parts.push(`zoom ${m.zoom}× ${m.zoomMode === "native" ? "by the camera" : "by cropping"}`);
   parts.push(`${m.clips} clip${m.clips === 1 ? "" : "s"}${m.merged ? ", merged" : ""}`);
