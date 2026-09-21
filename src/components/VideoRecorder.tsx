@@ -85,26 +85,15 @@ function cameraConstraints(): MediaStreamConstraints {
     audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
   };
 }
-// The house rate is 8 Mbps (Landon: storage is cheap, and YouTube may follow Instagram).
-// It was cut to 5 for the 2026-09-19 event, 100 people on one venue network, and went
-// back on 2026-09-21 once the iOS 26 fix below was proven on a phone. Android and
-// desktop browsers honour the figure, so they are asked for 8. iPhones and iPads treat
-// it as a loose hint: asked for 5 at the event they wrote 7 to 8.5 Mbps. They are
-// therefore still asked for 5, which already gives the house rate and leaves the exact
-// setup that was proven on 2026-09-21 alone. Asking them for 8 could only make their
-// files bigger than anyone wants (a 3-minute take is ~190 MB as it is).
+// 8 Mbps asked of every device (Landon, 2026-09-21: storage is cheap, and YouTube may
+// follow Instagram). It was 5 for the 2026-09-19 event, 100 people on one venue network.
+// Android and desktop browsers honour the figure. iPhones and iPads treat it as a loose
+// hint: asked for 5 at the event they wrote 7 to 8.5 Mbps, and what they write when
+// asked for 8 was not yet measured when this was set. For a day they were kept at 5 on
+// those grounds; Landon chose 8 across the board. `capture_meta.askedBitrate` travels
+// with each upload, so size over duration shows what a device really wrote.
 const VIDEO_BITRATE = 8_000_000;
-const VIDEO_BITRATE_APPLE_MOBILE = 5_000_000;
 const AUDIO_BITRATE = 192_000;
-// iPhones and iPads. Every browser there is WebKit, whatever it is called.
-function isAppleMobile(): boolean {
-  if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent;
-  return /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-}
-function videoBitrate(): number {
-  return isAppleMobile() ? VIDEO_BITRATE_APPLE_MOBILE : VIDEO_BITRATE;
-}
 /**
  * Every clip is recorded in one-second slices: `rec.start(SLICE_MS)`, never `rec.start()`.
  *
@@ -394,7 +383,7 @@ export default function VideoRecorder({
     if (!v) return;
     diagRef.current.camera = `${v.videoWidth}x${v.videoHeight}`;
     diagRef.current.recorded = "";
-    console.debug(`[recorder] camera ${v.videoWidth}×${v.videoHeight} · recording the camera track · zoom ${zoomRef.current}× by ${nativeZoomRef.current !== null ? "the camera" : "nothing (1×)"} · asking ${videoBitrate() / 1e6} Mbps`);
+    console.debug(`[recorder] camera ${v.videoWidth}×${v.videoHeight} · recording the camera track · zoom ${zoomRef.current}× by ${nativeZoomRef.current !== null ? "the camera" : "nothing (1×)"} · asking ${VIDEO_BITRATE / 1e6} Mbps`);
     startFrameLoop(v, null);
   }
   /**
@@ -421,7 +410,7 @@ export default function VideoRecorder({
     if (!ctx) return null;
     diagRef.current.camera = `${sw}x${sh}`;
     diagRef.current.recorded = `${cw}x${ch}`;
-    console.debug(`[recorder] camera ${sw}×${sh} · recording ${cw}×${ch} through the canvas · zoom ${zoomRef.current}× by ${nativeZoomRef.current !== null ? "the camera" : "cropping"} · asking ${videoBitrate() / 1e6} Mbps`);
+    console.debug(`[recorder] camera ${sw}×${sh} · recording ${cw}×${ch} through the canvas · zoom ${zoomRef.current}× by ${nativeZoomRef.current !== null ? "the camera" : "cropping"} · asking ${VIDEO_BITRATE / 1e6} Mbps`);
     // The zoom is read per frame so the control works mid-clip.
     const paint = () => {
       const c = portraitCrop(sw, sh, cropZoomRef.current);
@@ -449,7 +438,7 @@ export default function VideoRecorder({
     if (!canvasStream) startCameraWatch();
     const source = canvasStream ?? cam;
     let rec: MediaRecorder;
-    try { rec = new MediaRecorder(source, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: videoBitrate(), audioBitsPerSecond: AUDIO_BITRATE }); }
+    try { rec = new MediaRecorder(source, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: VIDEO_BITRATE, audioBitsPerSecond: AUDIO_BITRATE }); }
     catch { stopDrawing(); setError("Recording isn't supported in this browser. Try uploading a file instead."); return; }
     const startedAt = performance.now();
     const slices: Slice[] = [];
@@ -519,7 +508,7 @@ export default function VideoRecorder({
       pipeline: cs.every((c) => c.pipeline === "camera") ? "camera" : cs.every((c) => c.pipeline === "canvas") ? "canvas" : "mixed",
       ...(unsliced ? { unsliced: true as const } : {}),
       codec: mimeRef.current || null,
-      askedBitrate: videoBitrate(),
+      askedBitrate: VIDEO_BITRATE,
       fps: ms > 0 && frames > 0 ? Math.round((frames / ms) * 1000) : null,
       zoom: zoomRef.current,
       zoomMode: nativeZoomRef.current !== null ? "native" : "canvas",

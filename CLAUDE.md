@@ -36,17 +36,14 @@ Next: phase-2 Instagram API posting.
 
 ### After the 2026-09-19 event (do these, then delete this list)
 
-- DONE 2026-09-21: the iOS 26 fix is proven (see Status) and the data rate is back at
-  the house rate of 8 Mbps: Android and desktop are asked for 8; iPhones and iPads are
-  still asked for 5 because they wrote 7 to 8.5 Mbps at that setting, which is the house
-  rate already. When the first iPhone uploads arrive, run
-  `node scripts/dev/freeze-audit.mjs <since>` and compare size over duration with
-  `capture_meta.askedBitrate`; if iPhones turn out to write well under 8 in slices,
-  raise `VIDEO_BITRATE_APPLE_MOBILE`.
+- When the first iPhone uploads arrive, run `node scripts/dev/freeze-audit.mjs <since>`
+  and compare size over duration with `capture_meta.askedBitrate`. Every device has
+  been asked for 8 Mbps since 2026-09-21 (Landon's decision; Claude had kept iPhones at
+  5 for a day because they wrote 7 to 8.5 Mbps at that setting and nobody had measured
+  them at 8). If iPhones turn out to write far more than 8, tell Landon the file sizes
+  and let him choose; do not lower it unasked.
 - Try `?rec=camera` (direct camera recording, see below) on a real iPhone and a cheap
   Android; if upright and smooth, consider making it the default for portrait frames.
-- Remind Landon to downgrade Resend from Pro (upgraded 2026-09-18) unless email volume
-  stayed above ~100 a day.
 - Still open with Travis: Brady Gordon's email (Philippines lead), whether
   holyrebellionph@gmail.com stays a lead, Instagram handles for the four new teams.
 
@@ -117,8 +114,10 @@ Next: phase-2 Instagram API posting.
    - Emergency levers, in order: people record with their own camera app and use
      "Upload a video I already have"; captcha off in Auth -> Attack Protection if
      submits fail on captcha; Auth -> Rate Limits if errors mention a rate limit.
-   - Resend: Landon upgraded to Pro on 2026-09-18 (the free tier is 100 emails a day,
-     and auth emails share it with the notification digests).
+   - Resend: Landon upgraded to Pro on 2026-09-18 for the event and moved back to the
+     free plan on 2026-09-21. The free tier is 100 emails a day, and auth emails share
+     it with the notification digests; event day sent about 45 in all. Upgrade again
+     before any event of that size or larger.
 7. Seed data lives in `supabase/seeds/` (applied by hand with psql, re-runnable).
    Philippines / Tagalog with Instagram `Liwinag.ni.kristo` and manager invite
    `holyrebellionph@gmail.com` were seeded 2026-09-10. English, Spanish, French and
@@ -373,8 +372,8 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
     timer bottom-left and the record button; the clip strip with delete buttons sits
     below the frame.
   - The recorder therefore draws each frame into a 9:16 canvas (`startCanvasCapture`
-    in `VideoRecorder.tsx`, rVFC-driven; 8 Mbps asked of Android and desktop, 5 of iPhones
-    and iPads, which write about 8 regardless) and records that: portrait pixels, no
+    in `VideoRecorder.tsx`, rVFC-driven; 8 Mbps asked of every device since 2026-09-21,
+    5 for the event) and records that: portrait pixels, no
     rotation metadata, on every device. getUserMedia exposes the front camera's full
     wide field (reads as "0.5x" versus the Camera app), so phones and tablets start at
     1.5x; laptops and desktops start at 1x since 2026-09-18 (Landon on a MacBook: 1.5x
