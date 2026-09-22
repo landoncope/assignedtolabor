@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Turnstile, { TURNSTILE_SITE_KEY } from "@/components/Turnstile";
 import VideoRecorder, { type Capture } from "@/components/VideoRecorder";
 import { areaForLanguage, normalizeLanguage } from "@/lib/languages";
@@ -9,30 +9,59 @@ import { CONSENT, CTAS, HOOKS, TEMPLATES, fillTemplate } from "@/lib/script";
 import { createClient } from "@/lib/supabase/client";
 import { areaLabel, type Area, type AreaSummary, type Script } from "@/lib/types";
 import { uploadVideo } from "@/lib/upload-video";
+import { clearDraft, draftHasContent, readDraft, saveDraft, type Draft } from "@/lib/upload-draft";
 import { thumbnailFromFile } from "@/lib/video-thumb";
 
 type Step = "welcome" | "consent" | "hook" | "body" | "cta" | "language" | "record" | "review" | "done";
 const ORDER: Step[] = ["welcome", "consent", "hook", "body", "cta", "language", "record", "review", "done"];
+
+type Props = { areas: Area[]; myTeams: AreaSummary[]; signedIn: boolean };
+
+const noSubscribe = () => () => {};
+const noDraft = () => null;
 
 /**
  * The guided quick-upload flow: consent, a three-step script builder (hook, body,
  * call to action), language (and, for members, their team), record or choose a file,
  * upload. Anonymous: a Supabase anonymous session is created on submit; the uploader
  * can attach an email afterward to keep the video in an account.
+ *
+ * A draft of the typed steps is kept on the device (src/lib/upload-draft.ts). The
+ * server renders the welcome screen; the draft is read only on the client, after
+ * hydration, through useSyncExternalStore with a null server snapshot, and the flow
+ * is then remounted (the key) with the draft as its initial state. That avoids both a
+ * hydration mismatch and setting state from an effect.
  */
-export default function UploadFlow({ areas, myTeams, signedIn }: { areas: Area[]; myTeams: AreaSummary[]; signedIn: boolean }) {
+export default function UploadFlow(props: Props) {
+  const stored = useSyncExternalStore(noSubscribe, readDraft, noDraft);
+  const [fresh, setFresh] = useState(false);
+  const draft = fresh ? null : stored;
+  return <Flow key={fresh ? "fresh" : draft ? "draft" : "new"} {...props} draft={draft} onStartFresh={() => { clearDraft(); setFresh(true); }} />;
+}
+
+/** Where a restored draft lands. A recording cannot be restored, so those steps go back to the language step. */
+function stepFromDraft(d: Draft | null): Step {
+  if (!d) return "welcome";
+  const s = d.step as Step;
+  if (s === "record" || s === "review") return "language";
+  return ORDER.includes(s) && s !== "done" ? s : "welcome";
+}
+
+function Flow({ areas, myTeams, signedIn, draft, onStartFresh }: Props & { draft: Draft | null; onStartFresh: () => void }) {
   const supabase = useMemo(() => createClient(), []);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const [step, setStep] = useState<Step>("welcome");
-  const [consentIdx, setConsentIdx] = useState(0);
-  const [hook, setHook] = useState<string | null>(null);
-  const [hookCustom, setHookCustom] = useState("");
-  const [tplKey, setTplKey] = useState<string | null>(null);
-  const [blanks, setBlanks] = useState<string[]>(["", ""]);
-  const [bodyCustom, setBodyCustom] = useState("");
-  const [cta, setCta] = useState<string | null>(null);
-  const [ctaCustom, setCtaCustom] = useState("");
+  const [step, setStep] = useState<Step>(() => stepFromDraft(draft));
+  const [consentIdx, setConsentIdx] = useState(draft?.consentIdx ?? 0);
+  const [hook, setHook] = useState<string | null>(draft?.hook ?? null);
+  const [hookCustom, setHookCustom] = useState(draft?.hookCustom ?? "");
+  const [tplKey, setTplKey] = useState<string | null>(draft?.tplKey ?? null);
+  const [blanks, setBlanks] = useState<string[]>(draft?.blanks ?? ["", ""]);
+  const [bodyCustom, setBodyCustom] = useState(draft?.bodyCustom ?? "");
+  const [cta, setCta] = useState<string | null>(draft?.cta ?? null);
+  const [ctaCustom, setCtaCustom] = useState(draft?.ctaCustom ?? "");
+  // "Picked up where you left off" shows on the restored step until the person moves on.
+  const [restoredNote, setRestoredNote] = useState(!!draft && stepFromDraft(draft) !== "welcome");
   // Where the video goes: "team:<id>" (a member's own team, the default for members,
   // per Travis 2026-09-17), "lang:<Language>" (English, or a language some team
   // covers), or "other" with a typed language. Free text was a datalist until
@@ -43,8 +72,9 @@ export default function UploadFlow({ areas, myTeams, signedIn }: { areas: Area[]
   // Read once, lazily: the language step is not in the server-rendered HTML, so the
   // client-only guess cannot cause a hydration mismatch.
   const [start] = useState(() => startingDestination(myTeams, areas));
-  const [dest, setDest] = useState<string>(start.dest);
-  const [otherLanguage, setOtherLanguage] = useState(start.other);
+  // A drafted destination is kept only if it is still on offer (teams can change, and signing in changes the list).
+  const [dest, setDest] = useState<string>(() => (draft && isOffered(draft.dest, myTeams, areas) ? draft.dest : start.dest));
+  const [otherLanguage, setOtherLanguage] = useState(draft?.otherLanguage ?? start.other);
   const selectedTeam = dest.startsWith("team:") ? myTeams.find((t) => t.id === dest.slice(5)) ?? null : null;
   const language = selectedTeam ? selectedTeam.language : dest.startsWith("lang:") ? dest.slice(5) : normalizeLanguage(otherLanguage);
   const teamLanguages = [...new Set(areas.map((a) => a.language.trim()))]
@@ -58,7 +88,7 @@ export default function UploadFlow({ areas, myTeams, signedIn }: { areas: Area[]
     { value: "other", label: "Another language" },
   ];
   const languageReady = language.length >= 2;
-  const [name, setName] = useState("");
+  const [name, setName] = useState(draft?.name ?? "");
   const [capture, setCapture] = useState<Capture | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
@@ -78,7 +108,21 @@ export default function UploadFlow({ areas, myTeams, signedIn }: { areas: Area[]
   };
   const teleprompter = [script.hook, script.body, script.cta].filter(Boolean).join(" ");
 
-  function go(next: Step) { setError(""); setStep(next); }
+  function go(next: Step) { setError(""); setRestoredNote(false); setStep(next); }
+
+  // Keep the typed steps on the device; drop them once the video is in. Reads and
+  // writes happen only on the client, after hydration (this is an effect).
+  useEffect(() => {
+    if (step === "done") { clearDraft(); return; }
+    const d = { step, consentIdx, hook, hookCustom, tplKey, blanks, bodyCustom, cta, ctaCustom, dest, otherLanguage, name };
+    if (draftHasContent(d)) saveDraft(d);
+  }, [step, consentIdx, hook, hookCustom, tplKey, blanks, bodyCustom, cta, ctaCustom, dest, otherLanguage, name]);
+  // No pull-to-refresh on this page (Android Chrome, iOS 16+): a pull at the top of a
+  // form reloaded the page for some people at the 2026-09-19 event.
+  useEffect(() => {
+    document.documentElement.classList.add("no-pull-refresh");
+    return () => document.documentElement.classList.remove("no-pull-refresh");
+  }, []);
   /** Skip the remaining script prompts: the uploader knows what they will say. */
   function skipScript() {
     setHook(null); setTplKey(null); setCta(null);
@@ -158,6 +202,12 @@ export default function UploadFlow({ areas, myTeams, signedIn }: { areas: Area[]
             {ORDER.slice(1, 7).map((s, i) => <span key={s} className={`h-1 flex-1 rounded-full ${i <= stepIdx - 1 ? "bg-amber-400" : "bg-white/15"}`} />)}
           </div>
         </div>
+      )}
+      {restoredNote && (
+        <p className="-mt-2 mb-4 flex items-center justify-between gap-3 rounded-lg bg-white/5 px-3 py-2 text-xs text-neutral-300">
+          <span>Picked up where you left off.</span>
+          <button onClick={onStartFresh} className="shrink-0 font-semibold text-amber-400">Start fresh</button>
+        </p>
       )}
 
       {step === "welcome" && (
@@ -363,6 +413,13 @@ function NextRow({ onSkip, onNext, disabled, onSkipAll, skipAllLabel }: { onSkip
       {onSkipAll && <button onClick={onSkipAll} className="btn border border-white/20 py-3 text-neutral-200">{skipAllLabel ?? "Skip the script"}</button>}
     </div>
   );
+}
+
+function isOffered(dest: string, myTeams: AreaSummary[], areas: Area[]): boolean {
+  if (dest === "other") return true;
+  if (dest.startsWith("team:")) return myTeams.some((t) => t.id === dest.slice(5));
+  if (dest.startsWith("lang:")) { const l = dest.slice(5).toLowerCase(); return l === "english" || areas.some((a) => a.language.trim().toLowerCase() === l); }
+  return false;
 }
 
 function startingDestination(myTeams: AreaSummary[], areas: Area[]): { dest: string; other: string } {

@@ -334,6 +334,19 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
   A team option sets `area_id` directly; a language routes to the single active area
   with that language (`areaForLanguage`), else null = admin queue, and reviewers
   assign the team on the review page.
+- Draft kept on the device (2026-09-21, Travis: people "whose browser refreshed" lost
+  their script). `src/lib/upload-draft.ts` saves the typed steps (step, hook, body,
+  CTA, language, name) to localStorage on every change and drops them once the video is
+  in or the person taps "Start fresh"; drafts older than a day are ignored (shared
+  phones). A reload lands on the saved step, or on the language step if it happened
+  while recording (clips are not kept: tens of MB each), with a "Picked up where you
+  left off" note. The server renders the welcome screen; the draft is read after
+  hydration through `useSyncExternalStore` (null server snapshot) and the flow is
+  remounted with it as initial state, which avoids a hydration mismatch and setting
+  state from an effect. On phones a "refresh" is mostly iOS reloading a tab after an
+  app switch, or a pull at the top of the page on Android, so the upload page also
+  sets `overscroll-behavior-y: contain` on `<html>` (class `no-pull-refresh`) while it
+  is on screen. Check: `node scripts/dev/draft-check.mjs <base> fake-cam.y4m <out-dir>`.
 - Script builder (hook / body / CTA) is optional at every level (the skip controls are
   outlined buttons under Next since 2026-09-18, not faint links): each step has
   "I'll improvise this part", the first step has "Skip the script, I know what I'll
@@ -370,7 +383,11 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
   - Recorder layout (2026-09-12, Travis: "congested"): inside the frame only the script
     (with a small Hide/Show chip top-right), a vertical zoom pill on the right edge, the
     timer bottom-left and the record button; the clip strip with delete buttons sits
-    below the frame.
+    below the frame. The script box is capped at 52% of the frame and scrolls, with a
+    "scroll for more" hint while there is more below (2026-09-21: a tester's long
+    custom script ran off the frame and would not scroll; the box used to be
+    pointer-events-none with no height limit); scripts over 240 characters get a
+    slightly smaller font. The built-in hook + body + CTA fits without scrolling.
   - The recorder therefore draws each frame into a 9:16 canvas (`startCanvasCapture`
     in `VideoRecorder.tsx`, rVFC-driven; 8 Mbps asked of every device since 2026-09-21,
     5 for the event) and records that: portrait pixels, no

@@ -185,6 +185,21 @@ export default function VideoRecorder({
   const [tips, setTips] = useState<"off" | "show" | "fade">("off");
   const [merging, setMerging] = useState(false);
   const [showScript, setShowScript] = useState(true);
+  // The script box scrolls when the script is longer than it (a tester's did not fit
+  // and would not scroll, 2026-09-21); a hint shows while there is more below.
+  const scriptRef = useRef<HTMLDivElement>(null);
+  const [scriptMore, setScriptMore] = useState(false);
+  function measureScript() {
+    const el = scriptRef.current;
+    setScriptMore(!!el && el.scrollHeight - el.scrollTop - el.clientHeight > 6);
+  }
+  useEffect(() => {
+    const el = scriptRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measureScript); // fires once on observe, then on any size change
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [teleprompter, showScript, cam]); // re-measure when the box appears or its text changes
   const [zoom, setZoom] = useState<number>(defaultZoom);
   const [zoomMode, setZoomMode] = useState<ZoomMode>("canvas");
   const [pipelinePref] = useState<Pipeline>(preferredPipeline);
@@ -559,8 +574,11 @@ export default function VideoRecorder({
           </div>
         )}
         {teleprompter && showScript && cam !== "error" && (
-          <div className="pointer-events-none absolute inset-x-3 top-3 rounded-xl bg-black/55 p-3 pr-16 text-center text-[15px] font-semibold leading-relaxed text-white backdrop-blur-sm">
-            {teleprompter}
+          <div className="absolute inset-x-3 top-3 flex max-h-[52%] flex-col overflow-hidden rounded-xl bg-black/55 backdrop-blur-sm">
+            <div ref={scriptRef} onScroll={measureScript} className={`min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 pr-16 text-center font-semibold text-white ${teleprompter.length > 240 ? "text-[14px] leading-snug" : "text-[15px] leading-relaxed"}`}>
+              {teleprompter}
+            </div>
+            {scriptMore && <span className="pointer-events-none absolute bottom-1 left-1/2 -translate-x-1/2 rounded-full bg-black px-2.5 py-0.5 text-[10px] font-semibold text-amber-300 shadow">▾ scroll for more</span>}
           </div>
         )}
         {teleprompter && cam !== "error" && (
