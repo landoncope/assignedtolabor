@@ -47,11 +47,11 @@ Next: Travis's answers to the open questions, then phase-2 Instagram posting.
 
 - iPhone data rate, measured 2026-10-03 and reported to Landon; HIS CALL, do not change
   it unasked. Every device has been asked for 8 Mbps since 2026-09-21 (his decision).
-  Asked for 8, iPhones write 13 to 15 Mbps (17 recordings; they wrote 8.7 when asked
-  for 5). That is about 105 MB a minute: an 85 s clip was 132 to 143 MB, and a
-  3-minute one would be ~315 MB, over Instagram's 300 MB API limit and slow on a
-  phone network. Android honours the figure (7.5 to 8.1 Mbps). Asking iPhones for 5
-  again would give the ~8 he wanted.
+  Asked for 8, iPhones write 12.8 to 14.9 Mbps, 13.9 on average over 17 recordings
+  (they wrote 8.7 when asked for 5). That is about 100 MB a minute: an 85 s clip was
+  132 to 143 MB, and a 3-minute one would be ~300 MB, at Instagram's 300 MB API limit
+  and slow on a phone network. Android honours the figure (7.5 to 8.1 Mbps, ~56 MB a
+  minute). Asking iPhones for 5 again would give the ~8 he wanted.
 - Try `?rec=camera` (direct camera recording, see below) on a real iPhone and a cheap
   Android; if upright and smooth, consider making it the default for portrait frames.
 - Still open with Travis: Brady Gordon's email (Philippines lead), whether
@@ -466,7 +466,12 @@ redirects to localhost and the sign-in cookie does not follow across hostnames.
   - NOT tested end to end: the captcha leg itself (a script must not pass Turnstile).
     `lead-flow-check.mjs` stands in a throwaway account flagged `is_anonymous` in the
     database, which is exactly what the server sees after a real visitor passes. The
-    first real visitor on production is the test of that one step.
+    first real visitor on production is the test of that one step. Seen on production
+    2026-10-03 in Landon's Chrome, without submitting: the form renders, the Turnstile
+    widget issues a token on its own and the button enables. Claude does not submit
+    through a captcha or create accounts on the live site, whatever permission is
+    given, so ask Landon or Travis for that one pass, then read the result from
+    `lead_applications` and `notifications` (kind `lead_part2`).
 - `areas` = name + language + optional `instagram_handle`. Since 2026-09-12 (Travis's
   feedback) uploaders do not pick a team: they say the language they will speak
   (`videos.language`). Since 2026-09-17 (tester Braydon: iOS drew the old free-text
