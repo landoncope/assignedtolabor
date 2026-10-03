@@ -4,9 +4,15 @@
 const FROM = "Assigned To Labor <no-reply@assignedtolabor.org>";
 const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://assignedtolabor.org";
 
-export type Outgoing = { to: string; subject: string; heading: string; paragraphs: string[]; cta?: { label: string; href: string } };
+/**
+ * `paragraphs` and `footer` are HTML: callers may use <b>, <br> and links, and must
+ * pass anything a person typed (names, notes, team names) through `escapeHtml`.
+ * `footer` replaces the default "because of your role" line, for mail to people who
+ * have no role yet.
+ */
+export type Outgoing = { to: string; subject: string; heading: string; paragraphs: string[]; cta?: { label: string; href: string }; footer?: string };
 
-function escapeHtml(s: string): string {
+export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
 }
 
@@ -20,7 +26,7 @@ export function renderEmail(m: Outgoing): string {
 <h1 style="font-size:22px;margin:0 0 12px">${escapeHtml(m.heading)}</h1>
 ${m.paragraphs.map((p) => `<p style="font-size:15px;line-height:1.55;margin:0 0 12px">${p}</p>`).join("")}
 ${cta}
-<p style="font-size:12px;color:#6b6b70;margin-top:32px">You are receiving this because of your role on <a href="${SITE}" style="color:#6b6b70">assignedtolabor.org</a>.</p>
+<p style="font-size:12px;color:#6b6b70;margin-top:32px">${m.footer ?? `You are receiving this because of your role on <a href="${SITE}" style="color:#6b6b70">assignedtolabor.org</a>.`}</p>
 </div></body></html>`;
 }
 

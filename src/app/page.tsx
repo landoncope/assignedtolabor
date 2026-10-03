@@ -15,6 +15,9 @@ export default function Home() {
         </p>
         <Link href="/upload" className="btn-primary mt-8 px-6 py-3 text-base">Record a video</Link>
         <p className="mt-3 text-sm text-muted">Takes about two minutes. No account needed.</p>
+        <p className="mt-10 text-sm text-muted">
+          Want to run a team that shares these videos? <Link href="/lead" className="font-semibold text-accent underline underline-offset-2">Apply to lead a team</Link>
+        </p>
       </main>
       <footer className="flex justify-center gap-4 px-6 py-6 text-xs text-muted">
         <Link href="/login" className="hover:text-foreground">Reviewer sign in</Link>

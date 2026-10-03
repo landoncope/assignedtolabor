@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import { getViewer } from "@/lib/auth";
+import { LEAD_STATUS_LABEL, type LeadApplication } from "@/lib/lead";
 import { createClient } from "@/lib/supabase/server";
 import { areaLabel, STATUS_LABEL, type VideoWithArea } from "@/lib/types";
 import ClaimCard, { type Claimable } from "./ClaimCard";
@@ -21,6 +22,12 @@ export default async function MyVideosPage({ searchParams }: PageProps<"/my">) {
   // Uploads an anonymous session made with this account's email, before the person signed in.
   const { data: claimable } = viewer && !viewer.isAnonymous ? await supabase.rpc("claimable_uploads") : { data: null };
   const toClaim = (claimable ?? []) as Claimable[];
+  // Their team lead application, if they have one (this also attaches one waiting on their address).
+  let lead: Pick<LeadApplication, "status"> | null = null;
+  if (viewer && !viewer.isAnonymous) {
+    const { data: leadId } = await supabase.rpc("lead_claim");
+    if (leadId) lead = (await supabase.from("lead_applications").select("status").eq("id", leadId as string).maybeSingle()).data as Pick<LeadApplication, "status"> | null;
+  }
 
   return (
     <>
@@ -36,6 +43,12 @@ export default async function MyVideosPage({ searchParams }: PageProps<"/my">) {
           <Link href="/my/teams" className="card mt-4 flex items-center justify-between gap-3 hover:border-accent">
             <span className="text-sm"><b>Teams.</b> Join a team or start one, and your videos go straight to its lead.</span>
             <span className="shrink-0 text-sm text-accent">Open ›</span>
+          </Link>
+        )}
+        {lead && (lead.status === "started" || lead.status === "submitted") && (
+          <Link href={lead.status === "started" ? "/lead/video" : "/lead"} className={`card mt-3 flex items-center justify-between gap-3 hover:border-accent ${lead.status === "started" ? "border-gold/60 bg-gold/10" : ""}`}>
+            <span className="text-sm"><b>Team lead application.</b> {lead.status === "started" ? "Part 2 is waiting: a short video on why you would like to lead." : LEAD_STATUS_LABEL[lead.status] + "."}</span>
+            <span className="shrink-0 text-sm text-accent">{lead.status === "started" ? "Record it ›" : "Open ›"}</span>
           </Link>
         )}
         {viewer?.isAnonymous && (

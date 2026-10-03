@@ -12,14 +12,16 @@ export const metadata: Metadata = { title: "Admin" };
 export default async function AdminPage() {
   const viewer = await requireAdmin("/admin");
   const supabase = await createClient();
-  const [{ data: areas }, { data: managers }, { data: invites }, { data: members }, { count: requestCount }, { data: users }] = await Promise.all([
+  const [{ data: areas }, { data: managers }, { data: invites }, { data: members }, { count: teamRequestCount }, { count: leadCount }, { data: users }] = await Promise.all([
     supabase.from("areas").select("*").order("sort_order").order("name"),
     supabase.from("area_managers").select("area_id, user_id, profile:profiles(id, email, display_name)"),
     supabase.from("manager_invites").select("area_id, email"),
     supabase.from("area_members").select("area_id, user_id, profile:profiles(id, email, display_name)"),
     supabase.from("team_applications").select("id", { count: "exact", head: true }).eq("status", "pending"),
+    supabase.from("lead_applications").select("id", { count: "exact", head: true }).eq("status", "submitted"),
     supabase.from("profiles").select("*").eq("is_anonymous", false).order("created_at", { ascending: false }).limit(500),
   ]);
+  const requestCount = (teamRequestCount ?? 0) + (leadCount ?? 0);
 
   type ManagerRow = { area_id: string; user_id: string; profile: { id: string; email: string | null; display_name: string | null } | null };
   const withManagers: AreaWithManagers[] = ((areas ?? []) as Area[]).map((a) => ({

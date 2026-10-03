@@ -4,7 +4,7 @@ Owner: Landon Cope (landon@highpsiproducts.com). Product owner: Travis (non-tech
 Claude owns this repo: language, dependencies, architecture, and this file. Keep CLAUDE.md
 current whenever a decision is made or reversed. Dates below are absolute (YYYY-MM-DD).
 
-## Status (2026-09-21)
+## Status (2026-10-03)
 
 **MVP is live in production at https://assignedtolabor.org.** Landon and Travis are
 admins and are testing. Working and verified: anonymous upload with portrait 9:16
@@ -31,17 +31,27 @@ same phone. He watched both on the review step and uploaded neither, so there ar
 file numbers from an iPhone yet; the first iPhone upload will supply them
 (`capture_meta.picture`, and size over duration against `capture_meta.askedBitrate`).
 Those 11 event files cannot be repaired (the frames were never written). Landon
-emailed the affected uploaders himself on 2026-09-20/21 and is waiting for replies.
-Next: phase-2 Instagram API posting.
+emailed the affected uploaders himself on 2026-09-20/21.
+
+**Since then (as of 2026-10-03):** the fix held in the field. 21 videos arrived after
+it shipped (most on 2026-09-24, a second gathering), 18 of them recorded on iPhones on
+iOS 26 or 27, clips up to 85 s, and `node scripts/dev/freeze-audit.mjs` finds 0 of 21
+frozen. A sixth team exists (Taiwan / Mandarin Chinese, from a start request). The
+review queue is the bottleneck: 53 videos in, 51 still pending, 2 approved, none
+posted. Travis (2026-10-03) wants the lead's job made as light as possible, ending in
+one tap that approves and posts; see "Social posting" under Decisions for what that
+takes. The **team lead application** (`/lead`, below) shipped 2026-10-03 at his request.
+Next: Travis's answers to the open questions, then phase-2 Instagram posting.
 
 ### After the 2026-09-19 event (do these, then delete this list)
 
-- When the first iPhone uploads arrive, run `node scripts/dev/freeze-audit.mjs <since>`
-  and compare size over duration with `capture_meta.askedBitrate`. Every device has
-  been asked for 8 Mbps since 2026-09-21 (Landon's decision; Claude had kept iPhones at
-  5 for a day because they wrote 7 to 8.5 Mbps at that setting and nobody had measured
-  them at 8). If iPhones turn out to write far more than 8, tell Landon the file sizes
-  and let him choose; do not lower it unasked.
+- iPhone data rate, measured 2026-10-03 and reported to Landon; HIS CALL, do not change
+  it unasked. Every device has been asked for 8 Mbps since 2026-09-21 (his decision).
+  Asked for 8, iPhones write 13 to 15 Mbps (17 recordings; they wrote 8.7 when asked
+  for 5). That is about 105 MB a minute: an 85 s clip was 132 to 143 MB, and a
+  3-minute one would be ~315 MB, over Instagram's 300 MB API limit and slow on a
+  phone network. Android honours the figure (7.5 to 8.1 Mbps). Asking iPhones for 5
+  again would give the ~8 he wanted.
 - Try `?rec=camera` (direct camera recording, see below) on a real iPhone and a cheap
   Android; if upright and smooth, consider making it the default for portrait frames.
 - Still open with Travis: Brady Gordon's email (Philippines lead), whether
@@ -247,12 +257,74 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
   granted. Both platforms require reviews that take weeks and cap posts per day, so
   automation cannot gate the MVP.
 
+- **Team lead application (2026-10-03, Travis):** a public page, `/lead`, where a
+  first-time visitor applies to lead a team with no account. Part 1 is a form: name,
+  email, phone, the language the channel will speak, the audience or location they
+  want to reach, why. An email then carries part 2, a short video on why they would
+  like to lead; its link is what creates and confirms the account. Admins review
+  answers plus video under Team requests and approve the person onto an existing team
+  or a new one. Travis's reason: "we'll get more qualified leads if I can have them
+  jump straight into that application". Claude's additions, flagged to Landon: a name
+  field; one team per language still holds (a new team is refused when the language
+  is covered; "audience or location" is information for the admin, not a team
+  boundary); the older, lighter routes to lead (the "I'd like to lead this team" tick
+  on a join request, "Start a team") still exist until Travis says to retire them.
+- **One-tap posting, researched 2026-10-03** (primary sources read that day by a
+  research agent; notes in the session scratchpad are not kept, so the facts are here):
+  - Instagram, with "Instagram API with Instagram Login" (permissions
+    `instagram_business_basic`, `instagram_business_content_publish`; no Facebook Page
+    needed): **no App Review is needed for accounts we own or manage** ("Standard
+    Access"). Each team's Instagram account must be professional (Business or
+    Creator) and public, is invited once as an Instagram Tester on our Meta app and
+    accepts inside Instagram; up to 50 testers, 500 with a verified business. Accounts
+    without a role would need Advanced Access: App Review plus Business Verification.
+    This overturns the 2026-09-04 assumption below that review "takes weeks" for us.
+    NOT verified: whether a Reel published by an unpublished (Development mode) app is
+    publicly visible; test it on one team account before building on it.
+  - Flow: `POST /{ig-id}/media` (`media_type=REELS`, `video_url`, `caption`), poll the
+    container until `FINISHED`, `POST /{ig-id}/media_publish`. `video_url` only has to
+    be reachable when Meta fetches it, so a signed Storage URL of a few hours should
+    do (inference). Tokens last 60 days and refresh. 100 posts per account per day.
+  - Reel requirements: MP4/MOV with the moov atom at the front and no edit lists,
+    H.264 or HEVC, 23 to 60 fps, at most 1920 px wide, 25 Mbps, AAC up to 48 kHz at
+    128 kbps, 3 s to 15 min, 300 MB. Our files do not reliably meet that: single-clip
+    recordings are fragmented MP4, audio is 192 kbps, some Androids record 8 to 10 fps,
+    and long iPhone clips can pass 300 MB. So posting needs a server-side normalise
+    step (ffmpeg: faststart MP4, 30 fps, H.264, AAC 128k). Vercel functions are the
+    wrong place for that; a small worker (DigitalOcean, Landon's preference) or a
+    transcoding service is the main new piece of infrastructure.
+  - Facebook: a separate call (`/{page-id}/video_reels`, `pages_manage_posts`); Reels
+    are 3 to 90 s; posts from a Development-mode app are visible only to people with a
+    role on the app, and going Live needs Business Verification (legal-entity
+    documents). So Facebook waits on whether the organisation can be verified.
+  - TikTok: not available for this. Direct Post needs an audit, unaudited apps post
+    private-only, and TikTok's guidelines name "a utility tool to help upload contents
+    to the account(s) you or your team manages" as not acceptable. TikTok stays manual.
+  - YouTube: uploads from an unaudited API project stay private until a compliance audit.
+  - Interim, no approvals needed: on iPhones a page can hand the video to the share
+    sheet (`navigator.share({ files })`, files only, from a tap, file already in
+    memory) and the lead picks Instagram; Instagram ignores prefilled captions, so
+    copy the caption to the clipboard at the same tap. Android Chrome refuses shares
+    over 50 MB, so there it stays download-then-post.
+  - AI captions need speech-to-text (Claude does not transcribe audio) plus a Claude
+    call; quality for Swahili and Tagalog transcription is the open risk.
+
 ## Open questions (Landon is asking Travis)
 
 1. Instagram handles for the English, Spanish, French and Swahili teams (Travis,
    2026-09-17: the leads will apply through the Teams page; admins approve them as
    leads). Philippines' lead is Brady Gordon per Travis (2026-09-17), who is getting an
    account; the seeded lead `holyrebellionph@gmail.com` ("Christian") is still a lead.
+2. Team lead application (asked 2026-10-03): should it replace the two lighter routes
+   to lead (the tick on a join request, "Start a team")? Does "audience or location"
+   ever define a separate team within a language (Spanish / Mexico and Spanish /
+   Spain), which language routing cannot tell apart today? Should people who finish
+   part 1 but not the video get a reminder email?
+3. One-tap posting (asked 2026-10-03): whose Facebook/Meta account owns the developer
+   app; is there a legal entity that can pass Meta's Business Verification (Facebook
+   needs it, Instagram for our own accounts does not); is every team's Instagram a
+   public professional account; the review criteria Travis wants shown to leads; and
+   whether captions should be AI-drafted (small running cost, Landon pays).
 
 ## Codebase
 
@@ -275,10 +347,15 @@ src/lib/picture-watch.ts    while recording: do the one-second slices still carr
 src/lib/mp4-orientation.ts  reads an MP4's rotation matrix; restores it after a merge if lost
 src/lib/video-thumb.ts      thumbnail for files picked with "Upload a video I already have"
 src/lib/capture-meta.ts     CaptureMeta: what the recorder saw, uploaded with each recording
+src/lib/lead.ts             team lead application: types, status labels, form validation
+src/lib/local-draft.ts      small localStorage draft (the lead form); upload-draft.ts is the upload flow's
+src/lib/use-initial-snapshot.ts  the draft as it was when the page loaded, hydration-safe (both flows)
 src/components/             Nav, VideoRecorder (multi-clip + teleprompter), VideoPlayer (signed URL)
 src/app/                    / landing, /upload flow, /qr poster, /login, /auth/*, /my,
-                            /my/teams (join/start a team), /review (+/[id], /requests),
-                            /admin, /api/videos/[id]/playback-url, /api/cron/{purge,notify}
+                            /my/teams (join/start a team), /lead (+/video: team lead
+                            application), /review (+/[id], /requests), /admin,
+                            /api/videos/[id]/playback-url,
+                            /api/lead-applications/[id]/playback-url, /api/cron/{purge,notify}
 ```
 
 Commands: `npm run dev`, `npm run build`, `npm run lint`, `npm run typecheck`,
@@ -290,6 +367,16 @@ users and a Klingon test team, safe to re-run; needs captcha OFF in
 Supabase for the run, and toggling it back on keeps the stored Turnstile secret). `scripts/dev/session-cookie.mjs`
 mints a throwaway admin session cookie; note the Chrome automation permission layer
 refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
+Tests that need NO captcha change (they never sign in anonymously or by password):
+`scripts/dev/lead-sql-check.sh` (44 rule checks as throwaway users inside one
+rolled-back transaction, by setting the JWT claims Postgres sees) and
+`node scripts/dev/lead-flow-check.mjs http://localhost:3001 fake-cam.y4m [dir]` (44
+browser checks of the team lead application; build and start with
+`NEXT_PUBLIC_TURNSTILE_SITE_KEY= NEXT_PUBLIC_SITE_URL=http://localhost:3001`). Their
+trick for a signed-in browser is the one our emails use: `auth.admin.generateLink`
+then `/auth/confirm?token_hash=…`, which is not captcha-protected. Use `localhost`,
+not 127.0.0.1, for anything that follows a redirect from a route handler: `next start`
+redirects to localhost and the sign-in cookie does not follow across hostnames.
 
 ### Data model and rules
 
@@ -322,6 +409,64 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
   deciders (leads, admins as fallback; grouped per recipient per sweep) and
   `application_outcome` to the applicant; a newly created team's lead gets the
   approval email only (`area_managers.notified_at` is set by the function).
+- Team lead applications (2026-10-03, Travis; migration
+  `20261003120000_lead_applications.sql`). `lead_applications` is keyed by the EMAIL
+  typed in part 1, because it exists before any account does: `email`, `full_name`,
+  `phone`, `language`, `audience`, `why`; `started_by` (the session that filled part
+  1), `user_id` (the account that proved the address, null until then); `status`
+  started -> submitted -> approved | declined; the part-2 video's `video_path` and
+  friends; decision and email bookkeeping. One open application per address (partial
+  unique index on `lower(email)`). No insert/update policies: everything goes through
+  security-definer functions.
+  - `lead_start(...)`: callable by any session, anonymous included. A real account
+    applies under its own address and may take over an unclaimed application waiting
+    on it. A session without an account keeps one unclaimed draft and may correct it,
+    address included. An address that already has an open application from someone
+    else is left untouched and that application is returned, so the email goes to
+    the address's owner and a stranger can neither read nor overwrite it.
+  - `lead_claim()`: attaches the open application waiting on the caller's CONFIRMED
+    address and returns it (else their latest decided one). `/lead`, `/lead/video`
+    and `/my` call it, so it does not matter how the person signed in (the email
+    link, Google, an account they already had). No stranded-application problem.
+  - `lead_attach_video(path, ...)`: the path must be in the caller's own folder and
+    exist in storage; sets `submitted`. One video; no replacing after sending.
+  - `decide_lead_application(app_id, approve, note, target_area, new_team_name,
+    new_team_language)`: admins only. Approving needs the video; it makes the
+    applicant lead and member of `target_area`, or creates a team (refused when an
+    active team already covers the language). Declining works at any open stage.
+  - Flow. `/lead` (dark shell like `/upload`; `src/app/lead/LeadApply.tsx`): a visitor
+    with no session gets an anonymous one in the browser (`signInAnonymously` with the
+    Turnstile token), and THAT is the captcha check: the server action
+    `startLeadApplication` requires a session, so reaching it means Supabase accepted
+    a captcha. No Turnstile secret is needed on our server. The action saves through
+    `lead_start`, then mints a sign-in link with the service role
+    (`auth.admin.generateLink({ type: "magiclink" })`, which creates the user when the
+    address is new and then reports `verification_type: "signup"`) and sends OUR OWN
+    "part 2" email through Resend with the link
+    `/auth/confirm?token_hash=…&type=<verification_type>&next=/lead/video`. The link
+    is built on `NEXT_PUBLIC_SITE_URL`, never on request headers (a forged Host could
+    otherwise aim a valid token at another site). Limits: 60 s between sends and 6 per
+    application, 40 an hour site-wide. Someone signed in to a real account skips the
+    email and goes straight to part 2.
+  - `/lead/video` (`requireUser`; `LeadVideo.tsx`): the recorder with no script, or a
+    picked file; upload with `uploadFile(..., "lead-")` to `{user_id}/lead-{ts}.ext`
+    in the same private bucket, then `lead_attach_video`. The video never enters
+    `videos` or the review queue. Answers can be changed (`/lead?edit=1`) until the
+    video is sent.
+  - Admins: `/review/requests` lists finished applications first (answers, contact
+    links, the video through `/api/lead-applications/[id]/playback-url`, a team
+    picker that preselects the team sharing the applicant's language, else "A new
+    team…"), then unfinished ones and recent decisions. The Review and Admin pages
+    count finished applications in their requests link.
+  - Emails: "part 2" at once from the action (kind `lead_part2`); from the cron,
+    `lead_application` to every admin when the video is in, and `lead_outcome` to the
+    applicant (never to an address no account confirmed). The purge cron deletes
+    application videos 30 days after the decision. Not built: a reminder for people
+    who stop after part 1.
+  - NOT tested end to end: the captcha leg itself (a script must not pass Turnstile).
+    `lead-flow-check.mjs` stands in a throwaway account flagged `is_anonymous` in the
+    database, which is exactly what the server sees after a real visitor passes. The
+    first real visitor on production is the test of that one step.
 - `areas` = name + language + optional `instagram_handle`. Since 2026-09-12 (Travis's
   feedback) uploaders do not pick a team: they say the language they will speak
   (`videos.language`). Since 2026-09-17 (tester Braydon: iOS drew the old free-text
@@ -340,10 +485,14 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
   in or the person taps "Start fresh"; drafts older than a day are ignored (shared
   phones). A reload lands on the saved step, or on the language step if it happened
   while recording (clips are not kept: tens of MB each), with a "Picked up where you
-  left off" note. The server renders the welcome screen; the draft is read after
-  hydration through `useSyncExternalStore` (null server snapshot) and the flow is
-  remounted with it as initial state, which avoids a hydration mismatch and setting
-  state from an effect. On phones a "refresh" is mostly iOS reloading a tab after an
+  left off" note. The server renders the welcome screen; the draft that was there
+  when the page loaded is read after hydration (`useInitialSnapshot`, built on
+  `useSyncExternalStore` with a null server snapshot) and the flow is remounted with
+  it as initial state, which avoids a hydration mismatch and setting state from an
+  effect. The value is latched once per mount on purpose: the first version read
+  the live draft on every render, so when a server action refreshed the page the
+  just-saved draft flipped the key and remounted the form mid-flow (found
+  2026-10-03 in the lead form; the upload flow had the same latent fault). On phones a "refresh" is mostly iOS reloading a tab after an
   app switch, or a pull at the top of the page on Android, so the upload page also
   sets `overscroll-behavior-y: contain` on `<html>` (class `no-pull-refresh`) while it
   is on screen. Check: `node scripts/dev/draft-check.mjs <base> fake-cam.y4m <out-dir>`.
@@ -533,7 +682,9 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
   `/auth/callback` so sign-in still completes if the allow list ever misses.
 - Email links use token hashes, not PKCE codes, so they work on any device (people
   upload from a phone and read mail on a laptop). `/auth/confirm?token_hash=&type=&next=`
-  calls `verifyOtp`. The Supabase templates "Magic link or OTP" (type=magiclink),
+  calls `verifyOtp`. A dead link is not a dead end (2026-10-03): the tokens work once
+  and for a limited time, so on failure someone already signed in on the device just
+  continues to `next`, and anyone else goes to `/login?next=…` with a plain message. The Supabase templates "Magic link or OTP" (type=magiclink),
   "Confirm sign up" (type=signup) and "Change email address" (type=email_change, the
   anonymous-to-account upgrade) were rewritten 2026-09-11 with Assigned To Labor
   wording and point at that route. Edited in the dashboard: subject input id
@@ -571,6 +722,9 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
   pending and rides the next digest. `?dry=1` returns the plan without sending. Test: `node scripts/dev/notify-dryrun.mjs`
   against a local `next start -p 3001`. PostgREST joins from `videos` to `profiles`
   must name the FK (`profiles!videos_user_id_fkey`): the table has three links to it.
+  Email paragraphs are HTML: since 2026-10-03 everything a person typed (names, notes,
+  team names) goes through `escapeHtml` in the cron and in the lead email; `Outgoing`
+  takes an optional `footer` for mail to people who have no role yet.
 - `guard_video_update` lets callers with no user id through (service role, migrations);
   it only constrains authenticated uploaders. Fixed 2026-09-11 after it blocked a
   migration and would have blocked the purge cron.
