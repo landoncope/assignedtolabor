@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Turnstile, { TURNSTILE_SITE_KEY } from "@/components/Turnstile";
 import VideoRecorder, { type Capture } from "@/components/VideoRecorder";
 import { areaForLanguage, normalizeLanguage } from "@/lib/languages";
@@ -10,15 +10,13 @@ import { createClient } from "@/lib/supabase/client";
 import { areaLabel, type Area, type AreaSummary, type Script } from "@/lib/types";
 import { uploadVideo } from "@/lib/upload-video";
 import { clearDraft, draftHasContent, readDraft, saveDraft, type Draft } from "@/lib/upload-draft";
+import { useInitialSnapshot } from "@/lib/use-initial-snapshot";
 import { thumbnailFromFile } from "@/lib/video-thumb";
 
 type Step = "welcome" | "consent" | "hook" | "body" | "cta" | "language" | "record" | "review" | "done";
 const ORDER: Step[] = ["welcome", "consent", "hook", "body", "cta", "language", "record", "review", "done"];
 
 type Props = { areas: Area[]; myTeams: AreaSummary[]; signedIn: boolean };
-
-const noSubscribe = () => () => {};
-const noDraft = () => null;
 
 /**
  * The guided quick-upload flow: consent, a three-step script builder (hook, body,
@@ -27,13 +25,14 @@ const noDraft = () => null;
  * can attach an email afterward to keep the video in an account.
  *
  * A draft of the typed steps is kept on the device (src/lib/upload-draft.ts). The
- * server renders the welcome screen; the draft is read only on the client, after
- * hydration, through useSyncExternalStore with a null server snapshot, and the flow
- * is then remounted (the key) with the draft as its initial state. That avoids both a
- * hydration mismatch and setting state from an effect.
+ * server renders the welcome screen; the draft that was there when the page loaded is
+ * read on the client after hydration (useInitialSnapshot) and the flow is then
+ * remounted (the key) with it as its initial state. That avoids both a hydration
+ * mismatch and setting state from an effect, and the flow never remounts again when
+ * the draft changes underneath it.
  */
 export default function UploadFlow(props: Props) {
-  const stored = useSyncExternalStore(noSubscribe, readDraft, noDraft);
+  const stored = useInitialSnapshot(readDraft);
   const [fresh, setFresh] = useState(false);
   const draft = fresh ? null : stored;
   return <Flow key={fresh ? "fresh" : draft ? "draft" : "new"} {...props} draft={draft} onStartFresh={() => { clearDraft(); setFresh(true); }} />;
@@ -369,8 +368,10 @@ function Flow({ areas, myTeams, signedIn, draft, onStartFresh }: Props & { draft
             </form>
           )}
           <p className="mt-6 text-sm text-neutral-400">
-            Want to help a team share videos, or lead one?{" "}
-            <Link href={signedIn ? "/my/teams" : "/login?next=%2Fmy%2Fteams"} className="text-amber-400 underline underline-offset-2">{signedIn ? "Join or start a team" : "Sign in and apply"}</Link>
+            Want to help a team share videos?{" "}
+            <Link href={signedIn ? "/my/teams" : "/login?next=%2Fmy%2Fteams"} className="text-amber-400 underline underline-offset-2">{signedIn ? "Join a team" : "Sign in and join a team"}</Link>
+            . Want to lead one?{" "}
+            <Link href="/lead" className="text-amber-400 underline underline-offset-2">Apply to lead a team</Link>.
           </p>
           <Link href="/" className="mt-6 text-sm text-neutral-500">Done</Link>
         </div>

@@ -77,6 +77,24 @@ export async function decideApplication(id: string, approve: boolean, note: stri
 }
 
 /**
+ * Approve or decline a team lead application (admins; the database function checks).
+ * Approving makes the applicant a lead of `areaId`, or creates a team named
+ * `newTeamName` for `newTeamLanguage` (their language by default) and makes them its
+ * lead. The applicant hears by email on the next notification sweep.
+ */
+export async function decideLeadApplication(id: string, approve: boolean, note: string, areaId: string | null, newTeamName: string | null, newTeamLanguage: string | null) {
+  await requireManager("/review/requests");
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("decide_lead_application", {
+    app_id: id, approve, note: note.trim() || null,
+    target_area: areaId, new_team_name: newTeamName?.trim() || null, new_team_language: newTeamLanguage?.trim() || null,
+  });
+  if (error) return { error: error.message };
+  for (const p of ["/review/requests", "/review", "/admin", "/my/teams", "/lead"]) revalidatePath(p);
+  return { ok: true };
+}
+
+/**
  * Permanently delete a video: the row (RLS decides who may) and then the file.
  * The uploader's account is untouched. Nothing is emailed.
  */

@@ -28,7 +28,10 @@ export default async function ReviewPage({ searchParams }: PageProps<"/review">)
     .limit(200);
   const videos = (data ?? []) as VideoWithArea[];
   // Pending team requests this viewer may decide (RLS scopes them; their own are excluded).
-  const { count: requestCount } = await supabase.from("team_applications").select("id", { count: "exact", head: true }).eq("status", "pending").neq("user_id", viewer.userId);
+  const { count: teamRequestCount } = await supabase.from("team_applications").select("id", { count: "exact", head: true }).eq("status", "pending").neq("user_id", viewer.userId);
+  // Finished team lead applications (answers plus video) wait for an admin.
+  const { count: leadCount } = viewer.isAdmin ? await supabase.from("lead_applications").select("id", { count: "exact", head: true }).eq("status", "submitted") : { count: 0 };
+  const requestCount = (teamRequestCount ?? 0) + (leadCount ?? 0);
 
   return (
     <>
@@ -37,7 +40,7 @@ export default async function ReviewPage({ searchParams }: PageProps<"/review">)
         <h1 className="text-2xl font-bold">Review</h1>
         <p className="mt-1 text-sm text-muted">{viewer.isAdmin ? "All teams, plus videos with no team." : "Videos sent to the teams you lead."}</p>
         <Link href="/review/requests" className={`mt-3 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${requestCount ? "border-gold/50 bg-gold/10 font-semibold" : "border-line text-muted hover:text-foreground"}`}>
-          {requestCount ? `${requestCount} ${requestCount === 1 ? "person is" : "people are"} waiting to join a team${viewer.isAdmin ? " or start one" : ""}` : "Team requests"} ›
+          {requestCount ? `${requestCount} ${requestCount === 1 ? "person is" : "people are"} waiting to join a team${viewer.isAdmin ? ", start one or lead one" : ""}` : "Team requests"} ›
         </Link>
         <div className="mt-5 flex gap-1 overflow-x-auto rounded-lg border border-line bg-card p-1">
           {TABS.map((t) => (

@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { sendEmail, siteUrl, type Outgoing } from "@/lib/email";
+import { escapeHtml as esc, sendEmail, siteUrl, type Outgoing } from "@/lib/email";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { areaLabel } from "@/lib/types";
 
@@ -11,6 +11,10 @@ import { areaLabel } from "@/lib/types";
  *  3. People made a manager, or invited by email, are told.
  *  4. Team requests: the people who decide (leads for join requests, admins for
  *     new-team proposals) get one email per sweep; applicants hear the outcome.
+ *  5. Team lead applications: admins hear when one is complete (answers plus video);
+ *     the applicant hears the decision. (The "part 2" email is sent at once by the
+ *     application itself, not here.)
+ * Paragraphs are HTML, so everything a person typed goes through escapeHtml (`esc`).
  * Each item is marked as notified only after its email is accepted by Resend, so a
  * failed send is retried on the next run. `?dry=1` returns the plan without sending.
  */
@@ -70,7 +74,7 @@ export async function GET(request: NextRequest) {
     for (const p of recipients) byRecipient.set(p.email!, [...(byRecipient.get(p.email!) ?? []), v]);
   }
   for (const [to, vids] of byRecipient) {
-    const lines = vids.map((v) => `<b>${areaLabel(v.area)}</b> from ${v.uploader_name ?? "Anonymous"}`);
+    const lines = vids.map((v) => `<b>${esc(areaLabel(v.area))}</b> from ${esc(v.uploader_name ?? "Anonymous")}`);
     await deliver(
       "new_videos",
       {
@@ -107,10 +111,10 @@ export async function GET(request: NextRequest) {
     }
     const m: Outgoing = v.status === "posted"
       ? { to: email, subject: "Your video has been shared", heading: "Your video is out in the world",
-          paragraphs: [`The ${areaLabel(v.area)} team posted your video.`, ...(v.post_url ? [`<a href="${v.post_url}">See the post</a>`] : [])],
+          paragraphs: [`The ${esc(areaLabel(v.area))} team posted your video.`, ...(v.post_url && /^https?:\/\//i.test(v.post_url) ? [`<a href="${esc(v.post_url)}">See the post</a>`] : [])],
           cta: { label: "See my videos", href: `${siteUrl}/my` } }
       : { to: email, subject: "About the video you shared", heading: "Thank you for sharing your video",
-          paragraphs: [`The ${areaLabel(v.area)} team decided not to post this one.`, ...(v.rejection_note ? [`Their note: ${v.rejection_note}`] : []), "You are always welcome to record another."],
+          paragraphs: [`The ${esc(areaLabel(v.area))} team decided not to post this one.`, ...(v.rejection_note ? [`Their note: ${esc(v.rejection_note)}`] : []), "You are always welcome to record another."],
           cta: { label: "Record another", href: `${siteUrl}/upload` } };
     await deliver("outcome", m, { video_id: v.id }, async () => { await db.from("videos").update({ uploader_notified_status: v.status }).eq("id", v.id); });
   }
@@ -132,7 +136,7 @@ export async function GET(request: NextRequest) {
   for (const i of (invites ?? []) as unknown as Invite[]) {
     await deliver("manager_invited", {
       to: i.email, subject: `You have been invited to lead ${areaLabel(i.area)}`, heading: "You have been invited to be a team lead",
-      paragraphs: [`Sign in with this email address (${i.email}) and the ${areaLabel(i.area)} review queue will be waiting for you.`],
+      paragraphs: [`Sign in with this email address (${esc(i.email)}) and the ${esc(areaLabel(i.area))} review queue will be waiting for you.`],
       cta: { label: "Sign in", href: `${siteUrl}/login` },
     }, { area_id: i.area_id }, async () => { await db.from("manager_invites").update({ notified_at: new Date().toISOString() }).eq("email", i.email).eq("area_id", i.area_id); });
   }
@@ -158,8 +162,8 @@ export async function GET(request: NextRequest) {
   }
   for (const [to, list] of appsByRecipient) {
     const lines = list.map((a) => a.kind === "join"
-      ? `<b>${who(a.profile)}</b> wants to join ${areaLabel(a.area)}${a.wants_lead ? " <b>and lead it</b> (an admin decides that)" : ""}${a.note ? `: “${a.note}”` : ""}`
-      : `<b>${who(a.profile)}</b> wants to start a team: ${a.team_name} · ${a.language}${a.region ? ` · ${a.region}` : ""}${a.note ? `: “${a.note}”` : ""}`);
+      ? `<b>${esc(who(a.profile))}</b> wants to join ${esc(areaLabel(a.area))}${a.wants_lead ? " <b>and lead it</b> (an admin decides that)" : ""}${a.note ? `: “${esc(a.note)}”` : ""}`
+      : `<b>${esc(who(a.profile))}</b> wants to start a team: ${esc(a.team_name ?? "")} · ${esc(a.language ?? "")}${a.region ? ` · ${esc(a.region)}` : ""}${a.note ? `: “${esc(a.note)}”` : ""}`);
     await deliver(
       "team_application",
       {
@@ -192,7 +196,7 @@ export async function GET(request: NextRequest) {
     const email = a.profile?.email;
     if (!email) { if (!dry) await mark(); continue; }
     const team = a.area ? areaLabel(a.area) : a.team_name ?? "the team";
-    const note = a.decision_note ? [`Their note: ${a.decision_note}`] : [];
+    const note = a.decision_note ? [`Their note: ${esc(a.decision_note)}`] : [];
     let m: Outgoing;
     if (a.kind === "join" && a.status === "approved") {
       const { data: leadRow } = a.area_id ? await db.from("area_managers").select("user_id").eq("area_id", a.area_id).eq("user_id", a.user_id).maybeSingle() : { data: null };
@@ -217,6 +221,59 @@ export async function GET(request: NextRequest) {
         cta: { label: "See the teams", href: `${siteUrl}/my/teams` } };
     }
     await deliver("application_outcome", m, { area_id: a.area_id }, mark);
+  }
+
+  // 6. Finished team lead applications, to every admin.
+  const { data: leadApps } = await db
+    .from("lead_applications")
+    .select("id, full_name, email, language, audience")
+    .eq("status", "submitted")
+    .is("admins_notified_at", null)
+    .order("submitted_at");
+  type LeadApp = { id: string; full_name: string; email: string; language: string; audience: string };
+  const newLeadApps = (leadApps ?? []) as LeadApp[];
+  if (newLeadApps.length) {
+    const markLeadApps = async () => { await db.from("lead_applications").update({ admins_notified_at: new Date().toISOString() }).in("id", newLeadApps.map((a) => a.id)); };
+    const lines = newLeadApps.map((a) => `<b>${esc(a.full_name)}</b> (${esc(a.email)}) · ${esc(a.language)} · wants to reach ${esc(a.audience)}`);
+    for (const p of admins) {
+      await deliver(
+        "lead_application",
+        {
+          to: p.email!,
+          subject: newLeadApps.length === 1 ? "A team lead application is waiting" : `${newLeadApps.length} team lead applications are waiting`,
+          heading: newLeadApps.length === 1 ? "A team lead application is waiting" : `${newLeadApps.length} team lead applications are waiting`,
+          paragraphs: ["Their answers and their video are ready for you:", lines.join("<br>")],
+          cta: { label: "Review the applications", href: `${siteUrl}/review/requests` },
+        },
+        {},
+        markLeadApps,
+      );
+    }
+    if (!dry && admins.length === 0) await markLeadApps();
+  }
+
+  // 7. Decisions, to the applicants.
+  const { data: leadDecided } = await db
+    .from("lead_applications")
+    .select("id, email, status, user_id, area_id, decision_note, area:areas(name, language)")
+    .in("status", ["approved", "declined"])
+    .is("outcome_notified_at", null)
+    .limit(200);
+  type LeadDecided = { id: string; email: string; status: "approved" | "declined"; user_id: string | null; area_id: string | null; decision_note: string | null; area: { name: string; language: string } | null };
+  for (const a of (leadDecided ?? []) as unknown as LeadDecided[]) {
+    const mark = async () => { await db.from("lead_applications").update({ outcome_notified_at: new Date().toISOString() }).eq("id", a.id); };
+    // No account ever confirmed the address: it is unproven, so nothing is sent to it.
+    if (!a.user_id) { if (!dry) await mark(); continue; }
+    const note = a.decision_note ? [`Their note: ${esc(a.decision_note)}`] : [];
+    const team = a.area ? areaLabel(a.area) : "your team";
+    const m: Outgoing = a.status === "approved"
+      ? { to: a.email, subject: `You are now a lead for ${team}`, heading: `You are now a lead for ${team}`,
+          paragraphs: ["The admins approved your application.", "Videos sent to your team land in your review queue, and you will get an email when new ones arrive. People who ask to join the team wait for you under Team requests.", ...note],
+          cta: { label: "Open the review queue", href: `${siteUrl}/review` } }
+      : { to: a.email, subject: "About your team lead application", heading: "Thank you for applying",
+          paragraphs: ["The admins did not approve your application to lead a team this time.", ...note, "You are always welcome to record videos of your own, and to apply again later."],
+          cta: { label: "Record a video", href: `${siteUrl}/upload` } };
+    await deliver("lead_outcome", m, { area_id: a.area_id }, mark);
   }
 
   return NextResponse.json({ ok: failures.length === 0, dry, planned: plan.length, plan, failures });

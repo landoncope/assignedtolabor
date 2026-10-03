@@ -2,11 +2,14 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const RETENTION_DAYS = 7;
+/** Team lead application videos go this long after the decision (they are never posted, so nothing else removes them). */
+const LEAD_VIDEO_RETENTION_DAYS = 30;
 
 /**
  * Daily retention job (Vercel cron, see vercel.json). Deletes the source file for
- * videos that were posted or rejected more than RETENTION_DAYS ago. The metadata
- * row stays so history and counts survive.
+ * videos that were posted or rejected more than RETENTION_DAYS ago, and for team
+ * lead applications decided more than LEAD_VIDEO_RETENTION_DAYS ago. The metadata
+ * rows stay so history and counts survive.
  */
 export async function GET(request: NextRequest) {
   const auth = request.headers.get("authorization") ?? "";
@@ -33,5 +36,22 @@ export async function GET(request: NextRequest) {
     const { error: upErr } = await supabase.from("videos").update({ file_purged_at: new Date().toISOString(), storage_path: null }).eq("id", v.id);
     if (upErr) failures.push(`${v.id}: ${upErr.message}`); else purged++;
   }
-  return NextResponse.json({ ok: failures.length === 0, purged, failures });
+
+  const leadCutoff = new Date(Date.now() - LEAD_VIDEO_RETENTION_DAYS * 86400_000).toISOString();
+  const { data: apps, error: appErr } = await supabase
+    .from("lead_applications")
+    .select("id, video_path")
+    .in("status", ["approved", "declined"])
+    .lt("decided_at", leadCutoff)
+    .not("video_path", "is", null)
+    .limit(200);
+  if (appErr) failures.push(`lead applications: ${appErr.message}`);
+  let leadPurged = 0;
+  for (const a of apps ?? []) {
+    const { error: rmErr } = await supabase.storage.from("videos").remove([a.video_path as string]);
+    if (rmErr) { failures.push(`lead ${a.id}: ${rmErr.message}`); continue; }
+    const { error: upErr } = await supabase.from("lead_applications").update({ video_purged_at: new Date().toISOString(), video_path: null }).eq("id", a.id);
+    if (upErr) failures.push(`lead ${a.id}: ${upErr.message}`); else leadPurged++;
+  }
+  return NextResponse.json({ ok: failures.length === 0, purged, leadPurged, failures });
 }

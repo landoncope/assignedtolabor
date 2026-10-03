@@ -3,11 +3,16 @@ import Link from "next/link";
 import Nav from "@/components/Nav";
 import { requireManager } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import type { AreaSummary } from "@/lib/types";
+import LeadApplications, { type LeadRequest } from "./LeadApplicationsClient";
 import RequestsClient, { type Request } from "./RequestsClient";
 
 export const metadata: Metadata = { title: "Team requests" };
 
-/** Pending team applications the viewer may decide: join requests for the teams they lead; for admins also proposals for new teams. */
+/**
+ * Pending team applications the viewer may decide: join requests for the teams they
+ * lead; for admins also proposals for new teams and team lead applications.
+ */
 export default async function RequestsPage() {
   const viewer = await requireManager("/review/requests");
   const supabase = await createClient();
@@ -20,13 +25,25 @@ export default async function RequestsPage() {
   const requests = ((data ?? []) as unknown as Request[]).filter((r) =>
     viewer.isAdmin || (r.kind === "join" && !!r.area_id && viewer.managedAreaIds.includes(r.area_id)),
   );
+  // Team lead applications are the admins' to decide (RLS returns only an admin all of them).
+  let leadApplications: LeadRequest[] = [];
+  let teams: AreaSummary[] = [];
+  if (viewer.isAdmin) {
+    const [{ data: apps }, { data: areas }] = await Promise.all([
+      supabase.from("lead_applications").select("*, area:areas(id, name, language, instagram_handle)").order("created_at", { ascending: false }).limit(300),
+      supabase.from("areas").select("id, name, language, instagram_handle").eq("is_active", true).order("sort_order").order("name"),
+    ]);
+    leadApplications = (apps ?? []) as unknown as LeadRequest[];
+    teams = (areas ?? []) as AreaSummary[];
+  }
   return (
     <>
       <Nav current="review" />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
         <Link href="/review" className="text-sm text-muted hover:text-foreground">‹ Back to review</Link>
         <h1 className="mt-4 text-2xl font-bold">Team requests</h1>
-        <p className="mt-1 text-sm text-muted">{viewer.isAdmin ? "People asking to join a team, and proposals for new teams. Only admins can add someone as a lead." : "People asking to join the teams you lead. Ask an admin to add someone as a lead."}</p>
+        <p className="mt-1 text-sm text-muted">{viewer.isAdmin ? "Team lead applications, people asking to join a team, and proposals for new teams. Only admins can add someone as a lead." : "People asking to join the teams you lead. Ask an admin to add someone as a lead."}</p>
+        {viewer.isAdmin && <div className="mt-6"><LeadApplications applications={leadApplications} areas={teams} /></div>}
         <RequestsClient requests={requests} isAdmin={viewer.isAdmin} />
       </main>
     </>

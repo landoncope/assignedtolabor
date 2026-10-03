@@ -44,18 +44,18 @@ export type UploadFields = {
 };
 
 /**
- * The single upload path: validate, PUT the file straight to the private `videos`
- * bucket via a signed upload URL (browser to Supabase, never through our server),
- * then insert the metadata row. If the insert fails the object is removed.
- * Returns the new video id.
+ * Puts a video file into the caller's folder of the private `videos` bucket through a
+ * signed upload URL (browser to Supabase, never through our server) and returns where
+ * it landed. Shared by testimony uploads and team lead application videos; `prefix`
+ * tells the two apart in the bucket ("lead-" for applications).
  */
-export async function uploadVideo(
+export async function uploadFile(
   supabase: SupabaseClient,
   userId: string,
   file: File,
-  fields: UploadFields,
   onProgress?: (pct: number) => void,
-): Promise<string> {
+  prefix = "",
+): Promise<{ path: string; contentType: string }> {
   const ext = (file.name.split(".").pop() || "webm").toLowerCase();
   // Recorders report types like "video/mp4;codecs=avc1,mp4a"; the bucket allow-list
   // only accepts the bare type. Fall back to the extension when the type is missing.
@@ -69,7 +69,7 @@ export async function uploadVideo(
   let path = "";
   for (let attempt = 1; attempt <= UPLOAD_ATTEMPTS; attempt++) {
     const last = attempt === UPLOAD_ATTEMPTS;
-    path = `${userId}/${Date.now()}.${ext}`;
+    path = `${userId}/${prefix}${Date.now()}.${ext}`;
     const { data: signed, error: signErr } = await supabase.storage.from("videos").createSignedUploadUrl(path);
     if (signErr || !signed) {
       if (last) throw new Error(signErr?.message ?? "Could not start the upload.");
@@ -85,6 +85,21 @@ export async function uploadVideo(
     onProgress?.(0);
     await wait(1500 * attempt);
   }
+  return { path, contentType };
+}
+
+/**
+ * The testimony upload path: put the file in the bucket, then insert the metadata
+ * row. If the insert fails the object is removed. Returns the new video id.
+ */
+export async function uploadVideo(
+  supabase: SupabaseClient,
+  userId: string,
+  file: File,
+  fields: UploadFields,
+  onProgress?: (pct: number) => void,
+): Promise<string> {
+  const { path, contentType } = await uploadFile(supabase, userId, file, onProgress);
 
   try {
     const { data, error } = await supabase
