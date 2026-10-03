@@ -19,6 +19,11 @@ import { areaLabel } from "@/lib/types";
  * failed send is retried on the next run. `?dry=1` returns the plan without sending.
  */
 const DIGEST_MIN_MINUTES = 30;
+// The default footer says "because of your role". These go to people who have none.
+const site = `<a href="${siteUrl}" style="color:#6b6b70">${siteUrl.replace(/^https?:\/\//, "")}</a>`;
+const FOOTER_UPLOADER = `You are receiving this because you sent a video to ${site} and asked to hear what became of it.`;
+const FOOTER_TEAM_REQUEST = `You are receiving this because you asked to join or start a team at ${site}.`;
+const FOOTER_LEAD_APPLICANT = `You are receiving this because you applied to lead a team at ${site}.`;
 
 export async function GET(request: NextRequest) {
   const auth = request.headers.get("authorization") ?? "";
@@ -116,7 +121,7 @@ export async function GET(request: NextRequest) {
       : { to: email, subject: "About the video you shared", heading: "Thank you for sharing your video",
           paragraphs: [`The ${esc(areaLabel(v.area))} team decided not to post this one.`, ...(v.rejection_note ? [`Their note: ${esc(v.rejection_note)}`] : []), "You are always welcome to record another."],
           cta: { label: "Record another", href: `${siteUrl}/upload` } };
-    await deliver("outcome", m, { video_id: v.id }, async () => { await db.from("videos").update({ uploader_notified_status: v.status }).eq("id", v.id); });
+    await deliver("outcome", { ...m, footer: FOOTER_UPLOADER }, { video_id: v.id }, async () => { await db.from("videos").update({ uploader_notified_status: v.status }).eq("id", v.id); });
   }
 
   // 3. New managers and invites.
@@ -220,7 +225,7 @@ export async function GET(request: NextRequest) {
         paragraphs: ["The admins did not create this team for now.", ...note, "You can still record videos and join an existing team."],
         cta: { label: "See the teams", href: `${siteUrl}/my/teams` } };
     }
-    await deliver("application_outcome", m, { area_id: a.area_id }, mark);
+    await deliver("application_outcome", { ...m, footer: FOOTER_TEAM_REQUEST }, { area_id: a.area_id }, mark);
   }
 
   // 6. Finished team lead applications, to every admin.
@@ -273,7 +278,7 @@ export async function GET(request: NextRequest) {
       : { to: a.email, subject: "About your team lead application", heading: "Thank you for applying",
           paragraphs: ["The admins did not approve your application to lead a team this time.", ...note, "You are always welcome to record videos of your own, and to apply again later."],
           cta: { label: "Record a video", href: `${siteUrl}/upload` } };
-    await deliver("lead_outcome", m, { area_id: a.area_id }, mark);
+    await deliver("lead_outcome", { ...m, footer: FOOTER_LEAD_APPLICANT }, { area_id: a.area_id }, mark);
   }
 
   return NextResponse.json({ ok: failures.length === 0, dry, planned: plan.length, plan, failures });

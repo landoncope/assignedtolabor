@@ -463,15 +463,23 @@ redirects to localhost and the sign-in cookie does not follow across hostnames.
     applicant (never to an address no account confirmed). The purge cron deletes
     application videos 30 days after the decision. Not built: a reminder for people
     who stop after part 1.
-  - NOT tested end to end: the captcha leg itself (a script must not pass Turnstile).
-    `lead-flow-check.mjs` stands in a throwaway account flagged `is_anonymous` in the
-    database, which is exactly what the server sees after a real visitor passes. The
-    first real visitor on production is the test of that one step. Seen on production
-    2026-10-03 in Landon's Chrome, without submitting: the form renders, the Turnstile
-    widget issues a token on its own and the button enables. Claude does not submit
-    through a captcha or create accounts on the live site, whatever permission is
-    given, so ask Landon or Travis for that one pass, then read the result from
-    `lead_applications` and `notifications` (kind `lead_part2`).
+  - Proven on production 2026-10-03 by Landon, with Claude watching the database and
+    Resend (`node scripts/dev/lead-watch.mjs`, read-only, one line per change): part 1
+    through the real captcha (the leg no script may do), the "part 2" email delivered
+    about 7 s after Save, the link confirming the address and attaching the
+    application, a 5 s video recorded in Chrome on his Mac, a decline from the admin
+    account, and the decision email delivered at the next sweep. Reloading the live
+    form mid-way restored all six answers from the draft. NOT exercised live: the
+    "application is waiting" email to admins, because he decided before the
+    five-minute sweep; it has only been seen as a dry run. Claude itself does not
+    submit through a captcha or create accounts on the live site, whatever permission
+    is given; `lead-flow-check.mjs` stands in a throwaway account flagged
+    `is_anonymous` in the database for that leg.
+  - Form wording (Landon, same day): the two parts are spelled out above the fields,
+    because the email hint mentioned "part 2" before anything had said what it was.
+  - Do not deploy while someone is mid-form or on Team requests: server action ids
+    change with each build, so a page opened before the deploy fails its next save
+    until it is reloaded (the draft survives the reload).
 - `areas` = name + language + optional `instagram_handle`. Since 2026-09-12 (Travis's
   feedback) uploaders do not pick a team: they say the language they will speak
   (`videos.language`). Since 2026-09-17 (tester Braydon: iOS drew the old free-text
@@ -729,7 +737,9 @@ redirects to localhost and the sign-in cookie does not follow across hostnames.
   must name the FK (`profiles!videos_user_id_fkey`): the table has three links to it.
   Email paragraphs are HTML: since 2026-10-03 everything a person typed (names, notes,
   team names) goes through `escapeHtml` in the cron and in the lead email; `Outgoing`
-  takes an optional `footer` for mail to people who have no role yet.
+  takes an optional `footer`, used for mail to people who have no role (uploaders,
+  people asking to join a team, lead applicants) instead of the default "because of
+  your role" line.
 - `guard_video_update` lets callers with no user id through (service role, migrations);
   it only constrains authenticated uploaders. Fixed 2026-09-11 after it blocked a
   migration and would have blocked the purge cron.
