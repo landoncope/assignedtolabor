@@ -146,6 +146,13 @@ function Apply({ accountEmail, accountName, application, editing, draft }: Props
     <Shell>
       <h1 className="mt-2 text-3xl font-bold">{editing ? "Your answers" : "Lead a team"}</h1>
       {!editing && <p className="mt-2 text-neutral-400">Team leads watch the videos people send to their team and post the ones worth sharing on the team&apos;s social accounts.</p>}
+      {/* Say what the two parts are before any field mentions "part 2" (Landon, 2026-10-03: the email hint did, and the explanation sat under the button). */}
+      {!editing && (
+        <ol className="mt-4 flex flex-col gap-1.5 rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-neutral-200">
+          <li><b className="text-white">Part 1.</b> A few questions about you, on this page.</li>
+          <li><b className="text-white">Part 2.</b> A short video on why you would like to lead a team. {signedIn ? "It comes right after this page." : "We email you the link when you save part 1."}</li>
+        </ol>
+      )}
       <p className="mt-5 text-xs font-bold uppercase tracking-[0.15em] text-amber-400">Part 1 of 2 · About you</p>
       <form onSubmit={(e) => { e.preventDefault(); void send(); }} className="mt-4 flex flex-col gap-4" noValidate>
         <Field label="Your name">
@@ -154,7 +161,7 @@ function Apply({ accountEmail, accountName, application, editing, draft }: Props
         {signedIn ? (
           <p className="rounded-lg bg-white/5 px-3 py-2 text-sm text-neutral-300">Applying as <b className="break-all">{accountEmail}</b>, the account you are signed in to.</p>
         ) : (
-          <Field label="Email" hint="Part 2 comes to this address, and it becomes your account.">
+          <Field label="Email" hint="The link for part 2 goes to this address. It also becomes your account.">
             <input className="input border-white/15 bg-white/5 text-white" type="email" inputMode="email" value={f.email} onChange={set("email")} autoComplete="email" autoCapitalize="none" spellCheck={false} placeholder="you@example.com" maxLength={254} />
           </Field>
         )}
@@ -176,7 +183,7 @@ function Apply({ accountEmail, accountName, application, editing, draft }: Props
           {busy ? "Saving…" : signedIn ? (editing ? "Save and go to part 2" : "Continue to part 2") : "Save and email me part 2"}
         </button>
         <p className="text-center text-xs text-neutral-500">
-          Part 2 is a short video about why you would like to lead a team. Only the site&apos;s administrators see your answers. <Link href="/privacy" className="underline">Privacy</Link>
+          Only the site&apos;s administrators see your answers and your video. <Link href="/privacy" className="underline">Privacy</Link>
         </p>
         {!signedIn && (
           <p className="text-center text-xs text-neutral-500">
