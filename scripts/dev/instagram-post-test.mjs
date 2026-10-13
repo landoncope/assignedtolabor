@@ -39,12 +39,12 @@ const igUserId = me.user_id ?? me.id;
 // 2. The file: a stored video (by videos.id) or a local file uploaded for the test.
 let path, caption = opt("--caption"), facts = "";
 if (opt("--video")) {
-  const { data: v, error } = await db.from("videos").select("id, storage_path, mime_type, size_bytes, duration_seconds, script, language, capture_meta").eq("id", opt("--video")).single();
+  const { data: v, error } = await db.from("videos").select("id, storage_path, mime_type, file_size, duration_seconds, script, language, capture_meta").eq("id", opt("--video")).single();
   if (error) throw new Error(error.message);
   path = v.storage_path;
   const cm = v.capture_meta ?? {};
-  facts = `${v.mime_type} ${(v.size_bytes / 1048576).toFixed(1)} MB ${v.duration_seconds ?? "?"} s ` +
-    `${cm.device ?? ""} ${cm.browser ?? ""} ${cm.canvas ? `${cm.canvas.width}x${cm.canvas.height}` : ""} fps=${cm.fps ?? "?"} clips=${cm.clipCount ?? "?"}`;
+  facts = `${v.mime_type} ${((v.file_size ?? 0) / 1048576).toFixed(1)} MB ${v.duration_seconds ?? "?"} s ` +
+    `camera ${cm.camera ?? "?"} recorded ${cm.recorded ?? "raw"} ${cm.codec ?? ""} fps=${cm.fps ?? "?"} clips=${cm.clips ?? "?"} pipeline=${cm.pipeline ?? "canvas"}` + (cm.picture ? ` picture ${cm.picture.seconds}s sound ${cm.picture.sound}s hold ${cm.picture.longestHold}s` : "");
   caption ??= v.script ? [v.script.hook, v.script.body, v.script.cta].filter(Boolean).join("\n\n") : "";
 } else if (opt("--file")) {
   const file = opt("--file");
