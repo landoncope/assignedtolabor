@@ -56,7 +56,7 @@ posted to a real Instagram account. Pick up here, in order:
 - **Done overnight 2026-10-13 (Landon asleep, "test thoroughly")**: landon_cope is an
   Instagram Tester of the app (invite accepted), the account is now a Creator account
   (public, category "Personal blog" hidden), `INSTAGRAM_APP_ID` is in Vercel
-  (Production + Preview, no redeploy yet), the mock-driven test grew to 41 checks (all
+  (Production + Preview; the f2484db deploy carries it), the mock-driven test grew to 41 checks (all
   pass), and the live-test helper exists. The Meta dashboard tab was left open on a
   "Token generated" dialog for landon_cope (the token shows once; Generate token again
   if it is gone).
