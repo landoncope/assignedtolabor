@@ -198,7 +198,15 @@ Pick up here.
    what the OAuth and token calls use: env `INSTAGRAM_APP_ID` / `INSTAGRAM_APP_SECRET`
    (Landon pastes the secret into Vercel and .env.local). Business login redirect URL:
    https://assignedtolabor.org/api/instagram/callback (Meta wants HTTPS, so the
-   callback is tested on production or a preview deploy, not localhost). Still to do:
+   callback is tested on production or a preview deploy, not localhost). App settings
+   -> Basic (saved 2026-10-13): app domain assignedtolabor.org, privacy and terms URLs
+   on the site, user data deletion = instructions URL https://assignedtolabor.org/privacy
+   (the page names the Instagram connection data and how to ask for deletion), category
+   Community & government, no icon yet. Business login settings (section 4 of "API
+   setup with Instagram login") also take a deauthorize callback URL and a data
+   deletion request URL; Meta wants them before App Review, which we do not need, so
+   they are left empty until the routes exist (planned: /api/instagram/deauthorize and
+   /api/instagram/data-deletion). Still to do:
    Instagram Tester role for a test account (App roles -> Roles) and its acceptance
    inside Instagram, the first access token ("Generate access tokens -> Add account"),
    Travis as a second administrator.
