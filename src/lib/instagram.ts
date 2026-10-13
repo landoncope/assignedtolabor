@@ -68,7 +68,8 @@ function graphPost(path: string, token: string, params: Record<string, string>):
 /** Where to send a lead to authorize the app for the Instagram account they are logged into. */
 export function authorizeUrl(state: string): string {
   const u = new URL("/oauth/authorize", AUTHORIZE_BASE);
-  u.searchParams.set("force_reauth", "true"); // let them pick the team's account, not whatever is logged in
+  // No force_reauth: with it Instagram demands the password again even when the browser is
+  // logged in (seen 2026-10-13). The dialog itself lets the lead switch accounts.
   u.searchParams.set("client_id", appId());
   u.searchParams.set("redirect_uri", REDIRECT_URI);
   u.searchParams.set("response_type", "code");
