@@ -184,6 +184,24 @@ Pick up here.
    `holyrebellionph@gmail.com` were seeded 2026-09-10. English, Spanish, French and
    Swahili (language-only teams, no leads yet) were seeded 2026-09-17 at Travis's
    request for the Saturday event; their leads apply from the Teams page.
+8. Meta app DONE 2026-10-13, from Landon's personal Facebook account (Claude drove the
+   dashboard in his Chrome with his explicit permission; he typed the password re-check
+   himself): app "Assigned To Labor", app id 1447625173912481, unpublished (Development
+   mode), contact email landoncope@gmail.com, no business portfolio connected. Created
+   with the use case "Manage messaging & content on Instagram" (Meta now flags the old
+   "Other" / Business route as going away). Use cases -> Customize -> Permissions and
+   features: instagram_business_basic and instagram_business_content_publish, both
+   "Ready for testing"; nothing else added (the page's "Add all required permissions"
+   would also add the messaging ones, which we do not need). "API setup with Instagram
+   login" shows the Instagram product's OWN id and secret (Instagram app name "Assigned
+   To Labor-IG", Instagram app id 29543249735272114); those, not the Meta app id, are
+   what the OAuth and token calls use: env `INSTAGRAM_APP_ID` / `INSTAGRAM_APP_SECRET`
+   (Landon pastes the secret into Vercel and .env.local). Business login redirect URL:
+   https://assignedtolabor.org/api/instagram/callback (Meta wants HTTPS, so the
+   callback is tested on production or a preview deploy, not localhost). Still to do:
+   Instagram Tester role for a test account (App roles -> Roles) and its acceptance
+   inside Instagram, the first access token ("Generate access tokens -> Add account"),
+   Travis as a second administrator.
 
 ## What this is
 
@@ -832,6 +850,8 @@ redirects to localhost and the sign-in cookie does not follow across hostnames.
   `scripts/dev/e2e-live.mjs` and the headless flow cannot sign in anonymously against
   the live project; switch captcha off in Supabase for a test run and back on after.
 - Env vars (names only): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+  `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET` (2026-10-13, the Instagram product's own
+  id and secret, not the Meta app's; see "Meta app" under Account setup),
   `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SITE_URL`, `CRON_SECRET`, `RESEND_API_KEY`,
   `NEXT_PUBLIC_TURNSTILE_SITE_KEY`.
   Template in `.env.example`.
