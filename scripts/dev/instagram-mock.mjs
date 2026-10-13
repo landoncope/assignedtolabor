@@ -13,7 +13,7 @@ const APP_ID = process.env.INSTAGRAM_APP_ID ?? "mock-app-id";
 const APP_SECRET = process.env.INSTAGRAM_APP_SECRET ?? "mock-app-secret";
 const IG_USER_ID = "17841400000000001";
 const APP_SCOPED_ID = "9000000000000001";
-const state = { codes: 0, tokens: 0, containers: new Map(), media: new Map(), fetched: [], calls: [] };
+const state = { codes: 0, tokens: 0, containers: new Map(), media: new Map(), fetched: [], calls: [], badcode: false };
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 const json = (res, status, body) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
@@ -30,13 +30,15 @@ createServer(async (req, res) => {
   log(req.method, url.pathname);
 
   if (p === "/__state") return json(res, 200, { ...state, containers: [...state.containers.values()], media: [...state.media.values()] });
+  // Test switches: /__config?badcode=1 makes the next login hand back a code the token exchange rejects.
+  if (p === "/__config") { state.badcode = params.badcode === "1"; return json(res, 200, { badcode: state.badcode }); }
 
   // Login dialog: send the browser straight back with a code (or an error with ?deny=1).
   if (p === "/oauth/authorize") {
     if (params.client_id !== APP_ID) return json(res, 400, { error_message: "Invalid client_id" });
     const back = new URL(params.redirect_uri);
     if (params.deny === "1") { back.searchParams.set("error", "access_denied"); back.searchParams.set("error_description", "The user denied your request."); }
-    else { back.searchParams.set("code", `MOCKCODE-${++state.codes}`); back.searchParams.set("state", params.state ?? ""); back.hash = "_"; }
+    else { back.searchParams.set("code", state.badcode ? "NOTACODE" : `MOCKCODE-${++state.codes}`); back.searchParams.set("state", params.state ?? ""); back.hash = "_"; state.badcode = false; }
     res.writeHead(302, { location: back.toString() }); return res.end();
   }
   if (p === "/oauth/access_token" && req.method === "POST") {

@@ -143,7 +143,7 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
         <div className="card flex flex-col gap-3">
           <div className="font-semibold">Post it</div>
           {publish.state === "failed" && publish.error && (
-            <p className="text-sm text-danger">Instagram did not take it: {publish.error}</p>
+            <p className="text-sm text-danger">Not posted: {publish.error}</p>
           )}
           {connected ? (
             <>

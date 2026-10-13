@@ -53,27 +53,33 @@ Nothing is half-built. Instagram posting from the site is merged (#4, d3e389b) a
 deployed; its migration is applied; the mock-driven test passes 30/30. It has NOT yet
 posted to a real Instagram account. Pick up here, in order:
 
-- **Landon pastes the Instagram app secret** into Vercel (Production + Preview) and
-  `.env.local` as `INSTAGRAM_APP_SECRET`, with `INSTAGRAM_APP_ID=29543249735272114`
-  (the Instagram product's id, not the Meta app id 1447625173912481; copy it from the
-  dashboard, Use cases -> Customize -> API setup with Instagram login -> Show). Until
-  then the Connect buttons say Instagram posting is not set up. A Vercel env change
-  needs a redeploy (push, or Redeploy in the dashboard).
-- **Tester account**: Landon gives his Instagram username; Claude adds it under App
-  roles -> Roles -> Add People -> Instagram Tester (the dialog was left open on that
-  step); Landon accepts inside Instagram (Settings -> Apps and websites -> Tester
-  invites) and switches the account to Creator or Business if it is personal.
-- **First real test, two ways.** (a) Through the site: sign in as an admin on
-  assignedtolabor.org, open Review, Connect Instagram on a test team while logged in
-  to that Instagram account in the same browser, then Approve and post a short video
-  with a clean file (a 2026-09-24 iPhone clip under 60 s, or a fresh recording).
-  (b) Outside the app: a token from the dashboard ("Generate access tokens -> Add
-  account") pasted into `.env.local` as `INSTAGRAM_TEST_TOKEN`, then
-  `node scripts/dev/instagram-post-test.mjs --video <id> --dry` and without `--dry`.
-  Either way, then look at the Reel from a signed-out browser: the open question is
-  whether a post from an unpublished (Development mode) app is public. Also note what
-  Instagram says about our file format; a refusal shows on the review page as
-  "Instagram did not take it: ..." and in `videos.publish_error`.
+- **Done overnight 2026-10-13 (Landon asleep, "test thoroughly")**: landon_cope is an
+  Instagram Tester of the app (invite accepted), the account is now a Creator account
+  (public, category "Personal blog" hidden), `INSTAGRAM_APP_ID` is in Vercel
+  (Production + Preview, no redeploy yet), the mock-driven test grew to 41 checks (all
+  pass), and the live-test helper exists. The Meta dashboard tab was left open on a
+  "Token generated" dialog for landon_cope (the token shows once; Generate token again
+  if it is gone).
+- **Morning, in order (about ten minutes):**
+  1. Vercel -> Environment Variables -> Add: `INSTAGRAM_APP_SECRET` (type Secret,
+     Production + Preview) = the Instagram app secret from the Meta dashboard (Use cases
+     -> Customize -> API setup with Instagram login -> Show). Then Deployments ->
+     Redeploy the latest. Claude does everything around this but never types the value.
+  2. `node scripts/dev/instagram-live-test.mjs setup`, then on assignedtolabor.org as
+     landoncope@gmail.com: Review -> Instagram accounts -> Connect Instagram on
+     "Instagram test" while that browser is logged in to landon_cope (it is, in
+     Chrome) -> allow -> open the test video -> Approve and post. Then
+     `node scripts/dev/instagram-live-test.mjs status`: the post state, the permalink,
+     and whether a signed-out fetch sees the Reel (the Development-mode question).
+  3. Optional, outside the app: paste the dashboard token into .env.local as
+     `INSTAGRAM_TEST_TOKEN` and run `node scripts/dev/instagram-post-test.mjs --file
+     <clip> --dry` then without `--dry`, with the two clips in the session scratchpad
+     (igtest/synthetic-portrait.mp4 and igtest/recorder-chrome-1clip.mp4, a real
+     recorder file: fragmented MP4, 202x358, 8 s) to see what Instagram says about our
+     own format. Regenerate them with ffmpeg / headless-upload-flow.mjs if the
+     scratchpad is gone.
+  4. `node scripts/dev/instagram-live-test.mjs cleanup` when done; delete the test
+     Reel(s) in the Instagram app if wanted.
 - **If the file is refused**: decide the normalise step (browser re-wrap at upload, or a
   small ffmpeg worker on DigitalOcean); if the post is not public: publishing the app
   needs a verified business (Travis's answer on a legal entity, open question 3).
@@ -412,11 +418,24 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     `INSTAGRAM_APP_SECRET=mock-app-secret`, `NEXT_PUBLIC_SITE_URL=http://localhost:3001`,
     no Turnstile key; the header of the script has the exact commands) drives the real
     pages in headless Chrome as a throwaway admin with a Klingon test team: connect,
-    one-tap post, a refused file, the cron finishing a post, stale and denied callbacks,
-    token unreadable through the public API, deauthorize, data deletion, disconnect.
-    All 30 passed on 2026-10-13. Not yet exercised against the real Instagram: that
-    needs a tester account and token (Account setup 8); `scripts/dev/instagram-post-test.mjs`
-    posts one stored video with a dashboard token, outside the app, for that first test.
+    one-tap post, a refused file, the cron finishing a post, token refresh near
+    expiry, a signed-in member of no team getting 403, oversize and purged files
+    refused before any request, a post queued but never started (the cron starts and
+    finishes it), the account disconnected mid-post, a code Instagram rejects, stale
+    and denied callbacks, token unreadable through the public API, deauthorize, data
+    deletion, disconnect; it also saves phone-width screenshots of the pending and
+    failed states to the optional third argument. All 41 passed on 2026-10-13.
+    The mock takes `/__config?badcode=1` to hand back a bad code once.
+    Against the real Instagram, two helpers: `node scripts/dev/instagram-live-test.mjs
+    setup | status | cleanup` prepares the first real post THROUGH THE SITE on
+    production (an active "Instagram test" / Klingon team, a pending synthetic 6 s
+    1080x1920 clip for the admin, printed review links; status fetches the permalink
+    signed-out and reports og tags or a not-found page; cleanup removes everything
+    but the Reel itself), and `scripts/dev/instagram-post-test.mjs` posts one file
+    outside the app with a dashboard token (`INSTAGRAM_TEST_TOKEN` in .env.local).
+    Neither has run against Instagram yet: the app secret and the token are values
+    Claude does not handle (the auto-mode classifier also refused to read the token
+    off the Meta page, "Credential Materialization"); Landon pastes them.
 - **One-tap posting, researched 2026-10-03** (primary sources read that day by a
   research agent; notes in the session scratchpad are not kept, so the facts are here):
   - Instagram, with "Instagram API with Instagram Login" (permissions

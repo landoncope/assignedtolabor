@@ -5,13 +5,13 @@
 //      INSTAGRAM_AUTHORIZE_BASE=http://127.0.0.1:3998 INSTAGRAM_OAUTH_BASE=http://127.0.0.1:3998 \
 //      INSTAGRAM_GRAPH_BASE=http://127.0.0.1:3998 NEXT_PUBLIC_TURNSTILE_SITE_KEY= \
 //      NEXT_PUBLIC_SITE_URL=http://localhost:3001 npx next build && (same env) npx next start -p 3001
-//   3. node scripts/dev/instagram-flow-check.mjs http://localhost:3001 [http://127.0.0.1:3998]
+//   3. node scripts/dev/instagram-flow-check.mjs http://localhost:3001 [http://127.0.0.1:3998] [screenshot-dir]
 // Uses the Supabase project in .env.local (the live one): a throwaway admin, a
 // "Klingon" test team, three small videos; everything is deleted at the end.
 import { createClient } from "@supabase/supabase-js";
 import { execFileSync } from "node:child_process";
 import { createHmac } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
@@ -24,14 +24,14 @@ const env = Object.fromEntries(readFileSync(".env.local", "utf8").split("\n").fi
 const db = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 const ts = Date.now();
 let passed = 0, failed = 0;
-const check = (name, ok, detail = "") => { ok ? passed++ : failed++; console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? ` · ${detail}` : ""}`); };
+const check = (name, ok, detail = "") => { if (ok) passed++; else failed++; console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? ` · ${detail}` : ""}`); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const video = async (id, cols) => (await db.from("videos").select(cols).eq("id", id).single()).data;
 const until = async (fn, ms = 30_000) => { const end = Date.now() + ms; for (;;) { const v = await fn(); if (v) return v; if (Date.now() > end) return null; await sleep(1000); } };
 const signedRequest = (payload, secret = MOCK_SECRET) => { const p = Buffer.from(JSON.stringify({ algorithm: "HMAC-SHA256", issued_at: Math.floor(Date.now() / 1000), ...payload })).toString("base64url"); return `${createHmac("sha256", secret).update(p).digest("base64url")}.${p}`; };
 const postForm = (path, form) => fetch(`${base}${path}`, { method: "POST", body: new URLSearchParams(form) });
 
-const created = { userId: null, areaId: null, videoIds: [], paths: [] };
+const created = { userId: null, userId2: null, areaId: null, videoIds: [], paths: [] };
 const tmp = mkdtempSync(join(tmpdir(), "ig-check-"));
 let browser;
 try {
@@ -56,8 +56,12 @@ try {
     { hook: "Hook one", body: "A short word about faith.", cta: "Learn more at the link." },
     { hook: "Hook two", body: "MOCKFAIL this one", cta: null },
     { hook: "Hook three", body: "Posted by the cron.", cta: null },
+    { hook: "Hook four", body: "Queued but never started; the cron picks it up.", cta: null },
+    { hook: "Hook five", body: "Too big for Instagram.", cta: null },
+    { hook: "Hook six", body: "File already purged.", cta: null },
+    { hook: "Hook seven", body: "Disconnected while in flight.", cta: null },
   ];
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < scripts.length; i++) {
     const path = `${created.userId}/mock-${ts}-${i}.mp4`;
     const { error: upErr } = await db.storage.from("videos").upload(path, bytes, { contentType: "video/mp4" });
     if (upErr) throw new Error(upErr.message);
@@ -66,7 +70,10 @@ try {
     if (vErr) throw new Error(vErr.message);
     created.videoIds.push(v.id);
   }
-  const [A, B, C] = created.videoIds;
+  const [A, B, C, D, E, F, G] = created.videoIds;
+  await db.from("videos").update({ file_size: 400 * 1048576 }).eq("id", E);
+  await db.from("videos").update({ storage_path: null, file_purged_at: new Date().toISOString() }).eq("id", F);
+  const shots = join(process.argv[4] ?? tmp, "shots"); mkdirSync(shots, { recursive: true });
 
   // Unauthenticated callers.
   check("publish-status without a session is 401", (await fetch(`${base}/api/videos/${A}/publish-status`)).status === 401);
@@ -114,7 +121,7 @@ try {
   // A file Instagram refuses: the page says why and offers a retry; the video stays approved.
   await page.goto(`${base}/review/${B}`);
   await page.getByRole("button", { name: /Approve and post to @atl_mock_team/ }).click();
-  await page.getByText("Instagram did not take it").waitFor({ timeout: 40_000 });
+  await page.getByText("Not posted:").waitFor({ timeout: 40_000 });
   const bodyB = await page.textContent("body");
   check("failure reason shown", bodyB.includes("The video format is not supported"));
   check("retry offered", await page.getByRole("button", { name: /Try again on @atl_mock_team/ }).isVisible());
@@ -134,6 +141,81 @@ try {
   const vC = await video(C, "status, publish_state, post_url");
   check("cron run 2 publishes it", vC?.status === "posted" && vC.publish_state === "published" && /MOCK/.test(vC.post_url ?? ""), JSON.stringify({ vC, run2: run2.posts }));
   check("cron reports no token work yet", Array.isArray(run2.tokens) && run2.tokens.length === 0, JSON.stringify(run2.tokens));
+
+  // Token refresh: a token close to expiry and old enough is refreshed by the cron.
+  const before = (await db.from("instagram_accounts").select("access_token").eq("area_id", created.areaId).single()).data?.access_token;
+  await db.from("instagram_accounts").update({ token_expires_at: new Date(Date.now() + 5 * 86400_000).toISOString(), connected_at: new Date(Date.now() - 2 * 86400_000).toISOString(), refreshed_at: null }).eq("area_id", created.areaId);
+  const runR = await cron();
+  const afterR = (await db.from("instagram_accounts").select("access_token, token_expires_at, refreshed_at, last_error").eq("area_id", created.areaId).single()).data;
+  const daysLeft = afterR ? (new Date(afterR.token_expires_at) - Date.now()) / 86400_000 : 0;
+  check("cron refreshes a token near expiry", /^refreshed until/.test(runR.tokens?.[0]?.result ?? "") && afterR?.access_token !== before && daysLeft > 58 && !!afterR.refreshed_at && !afterR.last_error, JSON.stringify({ tokens: runR.tokens, daysLeft: Math.round(daysLeft) }));
+  const runR2 = await cron();
+  check("a fresh token is left alone", (runR2.tokens ?? []).length === 0, JSON.stringify(runR2.tokens));
+
+  // A signed-in member who leads nothing cannot read the publish status.
+  const email2 = `ig-check-member-${ts}@example.com`;
+  const { data: u2 } = await db.auth.admin.createUser({ email: email2, email_confirm: true });
+  created.userId2 = u2.user.id;
+  await until(async () => (await db.from("profiles").select("id").eq("id", created.userId2).maybeSingle()).data, 10_000);
+  const { data: link2 } = await db.auth.admin.generateLink({ type: "magiclink", email: email2 });
+  const ctx2 = await browser.newContext();
+  const page2 = await ctx2.newPage();
+  await page2.goto(`${base}/auth/confirm?token_hash=${link2.properties.hashed_token}&type=magiclink&next=/my`);
+  await page2.waitForURL(/\/my/);
+  const status2 = (await page2.request.get(`${base}/api/videos/${A}/publish-status`)).status();
+  check("publish-status for a lead of no team is 403", status2 === 403, `got ${status2}`);
+  await ctx2.close();
+
+  // Files Instagram would refuse are stopped before any request: too large, already purged.
+  await page.goto(`${base}/review/${E}`);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: join(shots, "pending-phone.png"), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const containersBefore = (await (await fetch(`${mock}/__state`)).json()).containers.length;
+  await page.getByRole("button", { name: /Approve and post to @atl_mock_team/ }).click();
+  await page.getByText("Not posted:").waitFor({ timeout: 20_000 });
+  const vE = await video(E, "status, publish_state, publish_error");
+  check("oversize file is refused before asking Instagram", vE?.status === "approved" && vE.publish_state === "failed" && /400 MB/.test(vE.publish_error ?? "") && (await (await fetch(`${mock}/__state`)).json()).containers.length === containersBefore, vE?.publish_error ?? "");
+  await page.goto(`${base}/review/${F}`);
+  await page.getByRole("button", { name: /Approve and post to @atl_mock_team/ }).click();
+  await page.getByText("Not posted:").waitFor({ timeout: 20_000 });
+  const vF = await video(F, "publish_state, publish_error");
+  check("purged file is refused with a plain reason", vF?.publish_state === "failed" && /already been deleted/.test(vF.publish_error ?? ""), vF?.publish_error ?? "");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: join(shots, "failed-phone.png"), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // A post that was queued but never started (the action died mid-way): the cron starts and finishes it.
+  await db.from("videos").update({ status: "approved", reviewed_by: created.userId, reviewed_at: new Date().toISOString(), publish_state: "queued", publish_requested_at: new Date().toISOString(), publish_requested_by: created.userId }).eq("id", D);
+  const q1 = await cron();
+  check("cron starts a queued post", q1.posts?.some((p) => p.id === D && p.before === "queued" && p.after?.state === "processing"), JSON.stringify(q1.posts));
+  await cron(); // IN_PROGRESS
+  await cron(); // FINISHED -> published
+  const vD = await video(D, "status, publish_state, post_url, posted_by");
+  check("cron finishes the queued post", vD?.status === "posted" && vD.publish_state === "published" && /MOCK/.test(vD.post_url ?? "") && vD.posted_by === created.userId, JSON.stringify(vD));
+
+  // The team's account is disconnected while a post is in flight: the post fails with a reason.
+  await page.goto(`${base}/review/${G}`);
+  await page.getByRole("button", { name: /Approve and post to @atl_mock_team/ }).click();
+  await page.getByText("Sending to Instagram").waitFor({ timeout: 15_000 });
+  await page.goto(`${base}/review`);
+  await db.from("instagram_accounts").delete().eq("area_id", created.areaId);
+  await db.from("areas").update({ instagram_user_id: null, instagram_connected_at: null }).eq("id", created.areaId);
+  await cron();
+  const vG = await video(G, "status, publish_state, publish_error");
+  check("disconnect mid-post fails the post with a reason", vG?.status === "approved" && vG.publish_state === "failed" && /disconnected/.test(vG.publish_error ?? ""), JSON.stringify(vG));
+  await page.goto(`${base}/review/${G}`);
+  check("a failed post on a team with no account shows the manual flow and a connect link", (await page.textContent("body")).includes("connect this team") && (await page.getByRole("button", { name: "Mark as posted" }).isVisible()));
+
+  // Instagram answers the callback with a code it then rejects: the lead sees Instagram's message.
+  await page.goto(`${base}/review`);
+  await fetch(`${mock}/__config?badcode=1`);
+  await page.locator("#instagram li", { hasText: "Instagram Mock Team" }).getByRole("link", { name: "Connect Instagram" }).click();
+  await page.waitForURL(/instagram_error=/, { timeout: 20_000 });
+  check("a rejected code shows Instagram's message", /Invalid authorization code/.test(new URL(page.url()).searchParams.get("instagram_error") ?? ""), new URL(page.url()).searchParams.get("instagram_error") ?? "");
+  await page.locator("#instagram li", { hasText: "Instagram Mock Team" }).getByRole("link", { name: "Connect Instagram" }).click();
+  await page.waitForURL(/instagram_connected=/, { timeout: 20_000 });
+  check("reconnected after the failure", !!(await db.from("instagram_accounts").select("area_id").eq("area_id", created.areaId).maybeSingle()).data);
 
   // Callback hygiene.
   await page.goto(`${base}/api/instagram/callback?code=x&state=bad`);
@@ -175,6 +257,7 @@ try {
   if (created.paths.length) await db.storage.from("videos").remove(created.paths);
   if (created.areaId) await db.from("areas").delete().eq("id", created.areaId);
   if (created.userId) await db.auth.admin.deleteUser(created.userId);
+  if (created.userId2) await db.auth.admin.deleteUser(created.userId2);
   rmSync(tmp, { recursive: true, force: true });
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
