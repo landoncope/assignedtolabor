@@ -41,54 +41,54 @@ review queue is the bottleneck: 53 videos in, 51 still pending, 2 approved, none
 posted. Travis (2026-10-03) wants the lead's job made as light as possible, ending in
 one tap that approves and posts; see "Social posting" under Decisions for what that
 takes. The **team lead application** (`/lead`, below) shipped 2026-10-03 at his request.
-**2026-10-13: Instagram posting from the site shipped** (PR #4): leads connect their
-team's Instagram account once and then approve and post with one tap; see
-"Instagram posting from the site" under Decisions and Account setup 8 for the Meta app
-(created the same day). Proven against a mock only so far; the first real post waits
-on the app secret in Vercel and a tester account (see "Where we paused").
+**2026-10-13: Instagram posting from the site shipped and PROVEN on the real
+Instagram** (PR #4 and follow-ups): a lead connects the team's Instagram account once
+and then approves and posts with one tap. Two real posts went out from
+assignedtolabor.org to the test account @landon_cope the same day (a synthetic
+1080x1920 clip and a clip made by our own recorder), both published about 50 s
+after the tap and both PUBLIC from a signed-out browser although the Meta app is
+unpublished. See "Instagram posting from the site" under Decisions and Account setup
+8 for the Meta app. Next: each real team's Instagram account connected by its lead.
 
-### Where we paused (2026-10-13)
+### Where we paused (2026-10-13, after the first real posts)
 
-Nothing is half-built. Instagram posting from the site is merged (#4, d3e389b) and
-deployed; its migration is applied; the mock-driven test passes 30/30. It has NOT yet
-posted to a real Instagram account. Pick up here, in order:
+Nothing is half-built. Pick up here.
 
-- **Done overnight 2026-10-13 (Landon asleep, "test thoroughly")**: landon_cope is an
-  Instagram Tester of the app (invite accepted), the account is now a Creator account
-  (public, category "Personal blog" hidden), `INSTAGRAM_APP_ID` is in Vercel
-  (Production + Preview; the f2484db deploy carries it), the mock-driven test grew to 41 checks (all
-  pass), and the live-test helper exists. The Meta dashboard tab was left open on a
-  "Token generated" dialog for landon_cope (the token shows once; Generate token again
-  if it is gone).
-- **Morning, in order (about ten minutes):**
-  1. Vercel -> Environment Variables -> Add: `INSTAGRAM_APP_SECRET` (type Secret,
-     Production + Preview) = the Instagram app secret from the Meta dashboard (Use cases
-     -> Customize -> API setup with Instagram login -> Show). Then Deployments ->
-     Redeploy the latest. Claude does everything around this but never types the value.
-  2. `node scripts/dev/instagram-live-test.mjs setup`, then on assignedtolabor.org as
-     landoncope@gmail.com: Review -> Instagram accounts -> Connect Instagram on
-     "Instagram test" while that browser is logged in to landon_cope (it is, in
-     Chrome) -> allow -> open the test video -> Approve and post. Then
-     `node scripts/dev/instagram-live-test.mjs status`: the post state, the permalink,
-     and whether a signed-out fetch sees the Reel (the Development-mode question).
-  3. Optional, outside the app: paste the dashboard token into .env.local as
-     `INSTAGRAM_TEST_TOKEN` and run `node scripts/dev/instagram-post-test.mjs --file
-     <clip> --dry` then without `--dry`, with the two clips in the session scratchpad
-     (igtest/synthetic-portrait.mp4 and igtest/recorder-chrome-1clip.mp4, a real
-     recorder file: fragmented MP4, 202x358, 8 s) to see what Instagram says about our
-     own format. Regenerate them with ffmpeg / headless-upload-flow.mjs if the
-     scratchpad is gone.
-  4. `node scripts/dev/instagram-live-test.mjs cleanup` when done; delete the test
-     Reel(s) in the Instagram app if wanted.
-- **If the file is refused**: decide the normalise step (browser re-wrap at upload, or a
-  small ffmpeg worker on DigitalOcean); if the post is not public: publishing the app
-  needs a verified business (Travis's answer on a legal entity, open question 3).
-- **Travis as a second administrator** of the Meta app (App roles -> Add People ->
-  Administrator) needs his Facebook account name; Landon to supply. The app otherwise
-  depends on Landon's Facebook account alone.
-- **Meta app still to do, optional**: the app icon (public/brand/icon-256.png; the
-  upload field opens a native file picker Claude cannot drive, so Landon drags it in).
-  The deauthorize and data deletion URLs are registered (Account setup 8).
+- **Proven live 2026-10-13 (two Reels on @landon_cope, Landon's own test account, a
+  Creator account since that day):** connect from the Review page (Instagram shows
+  its login form and asks the account's password, then "Allow"; the callback stored a
+  60-day token), one tap "Approve and post to @landon_cope", "Sending to Instagram…
+  (IN_PROGRESS)" for about 50 s, then "Posted … Open post".
+  https://www.instagram.com/reel/DecNdOxjZuK/ (synthetic 6 s 1080x1920 H.264/AAC,
+  faststart) and https://www.instagram.com/reel/DecNpXXD9qI/ (a recorder-made file:
+  single clip, fragmented MP4 from desktop Chrome's MediaRecorder, 202x358, 8 s,
+  192 kbps AAC). Both open signed-out in a headless Chrome with og:title, a <video>
+  and no login wall. So: (a) posts from an unpublished (Development mode) app ARE
+  public for tester accounts, no Business Verification needed for Instagram; (b)
+  Instagram accepted our native recorder format as-is, so the conversion server is
+  NOT needed for now (open: iPhone files over 300 MB and whether a very low fps
+  Android file is refused; the page shows Instagram's reason if one ever is).
+- **The one failure on the way:** the first connect ended in "Error validating
+  verification code. Please make sure your redirect_uri is identical…" because the
+  wrong secret had been pasted into Vercel (the Meta app's secret under App settings
+  -> Basic). The right one is the INSTAGRAM app secret on Use cases -> Customize ->
+  API setup with Instagram login, next to Instagram app id 29543249735272114. Vercel
+  now holds that one for Production and Preview (re-entered 2026-10-13; Landon pastes
+  secrets, Claude prepares the form). The secret was also pasted into chat once;
+  resetting it on the API setup page is optional (then update Vercel and redeploy).
+- **Test data:** the "Instagram test" team, its two videos and the connection were
+  removed by `node scripts/dev/instagram-live-test.mjs cleanup`; the two Reels stay on
+  @landon_cope (delete them in the Instagram app if wanted). landon_cope remains an
+  Instagram Tester of the app, useful for later tests.
+- **Next, with Travis:** which Instagram account each real team uses (only
+  Philippines has a handle on file), each lead logs in to it in a browser and taps
+  Connect on their Review page; each account must be a public professional account
+  and added as an Instagram Tester (App roles -> Roles -> Add People -> Instagram
+  Tester, then accepted in Instagram under Apps and websites -> Tester invites; 50
+  testers max unpublished). Then the first real approvals can be posted with one tap.
+  Still open from 2026-10-03: Travis's answers (open questions 2 and 3), Travis as a
+  second administrator of the Meta app (needs his Facebook account name), the app
+  icon, the review criteria and AI-caption decisions.
 - **Landon's Claude Code permissions (2026-10-13)**: he wants Bypass, not Auto. The
   VS Code extension refused browser clicks through the auto-mode classifier even with
   Bypass selected (an open bug, anthropics/claude-code #84390). Applied: global
@@ -96,12 +96,13 @@ posted to a real Instagram account. Pick up here, in order:
   ["mcp__claude-in-chrome"]`, VS Code `claudeCode.initialPermissionMode =
   bypassPermissions`, the zsh wrapper no longer passes `--permission-mode auto`, and a
   task-specific `autoMode.allow` sentence for the Meta/Instagram work in
-  `~/.claude/settings.json` (which is what unblocked this session). A fresh session
-  after a VS Code restart is the real test. Nothing undocumented was set.
+  `~/.claude/settings.json`. A fresh session after a VS Code restart is the real test.
+  The classifier also refuses "Credential Materialization" (reading a token off a
+  page), which matches the rule that Landon pastes secrets and tokens himself.
 - Still true from 2026-10-03: Landon relays the lead application and the posting plan
-  to Travis; open questions 2 and 3; test data (his declined lead application) stays on
-  production; data rate 8 Mbps is his call; iPhone share button and criteria checklist
-  are offered, not requested; Search Console fix proposed, not built.
+  to Travis; test data (his declined lead application) stays on production; data rate
+  8 Mbps is his call; iPhone share button and criteria checklist are offered, not
+  requested; Search Console fix proposed, not built.
 
 ### After the 2026-09-19 event (do these, then delete this list)
 
@@ -215,10 +216,11 @@ posted to a real Instagram account. Pick up here, in order:
    setup with Instagram login"), saved 2026-10-13: OAuth redirect URI as above,
    deauthorize callback https://assignedtolabor.org/api/instagram/deauthorize, data
    deletion request https://assignedtolabor.org/api/instagram/data-deletion (both
-   routes live since PR #4). Still to do:
-   Instagram Tester role for a test account (App roles -> Roles) and its acceptance
-   inside Instagram, the first access token ("Generate access tokens -> Add account"),
-   Travis as a second administrator.
+   routes live since PR #4). Instagram Testers: landon_cope (Landon's own account,
+   invited and accepted 2026-10-13, switched to a Creator account that day). The
+   dashboard's "Generate access tokens" also produced a token for it (shown once; not
+   stored anywhere by Claude). Still to do: Travis as a second administrator, the app
+   icon, and each real team's account as a tester.
 
 ## What this is
 
@@ -450,8 +452,8 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     accepts inside Instagram; up to 50 testers, 500 with a verified business. Accounts
     without a role would need Advanced Access: App Review plus Business Verification.
     This overturns the 2026-09-04 assumption below that review "takes weeks" for us.
-    NOT verified: whether a Reel published by an unpublished (Development mode) app is
-    publicly visible; test it on one team account before building on it.
+    VERIFIED 2026-10-13: a Reel published by the unpublished (Development mode) app to
+    a tester account is publicly visible (signed-out headless Chrome).
   - Flow: `POST /{ig-id}/media` (`media_type=REELS`, `video_url`, `caption`), poll the
     container until `FINISHED`, `POST /{ig-id}/media_publish`. `video_url` only has to
     be reachable when Meta fetches it, so a signed Storage URL of a few hours should
@@ -460,10 +462,10 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     H.264 or HEVC, 23 to 60 fps, at most 1920 px wide, 25 Mbps, AAC up to 48 kHz at
     128 kbps, 3 s to 15 min, 300 MB. Our files do not reliably meet that: single-clip
     recordings are fragmented MP4, audio is 192 kbps, some Androids record 8 to 10 fps,
-    and long iPhone clips can pass 300 MB. So posting needs a server-side normalise
-    step (ffmpeg: faststart MP4, 30 fps, H.264, AAC 128k). Vercel functions are the
-    wrong place for that; a small worker (DigitalOcean, Landon's preference) or a
-    transcoding service is the main new piece of infrastructure.
+    and long iPhone clips can pass 300 MB. 2026-10-13: a recorder-made fragmented
+    MP4 (192 kbps audio, 202x358) was accepted and published as-is, so no normalise
+    step is built; if a file is ever refused the review page shows Instagram's reason
+    and the manual flow, and a worker (DigitalOcean) can be added then.
   - Facebook: a separate call (`/{page-id}/video_reels`, `pages_manage_posts`); Reels
     are 3 to 90 s; posts from a Development-mode app are visible only to people with a
     role on the app, and going Live needs Business Verification (legal-entity
