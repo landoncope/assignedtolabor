@@ -84,6 +84,15 @@ Pick up here.
   video (the purge removes it 30 days after the decision) and that account. Claude
   offered to remove them; he has not asked. It shows under "Recent decisions" on Team
   requests; it is not a real applicant.
+- **Search Console (2026-10-12), assessed, nothing built:** Google reported "Page
+  with redirect" and "Duplicate without user-selected canonical". The site has no
+  canonical tags, no robots.txt, no sitemap, and `assignedtolabor.vercel.app` serves
+  every page as a second host with no noindex header. Signed-out `/my`, `/review`,
+  `/admin`, `/my/teams` and `/lead/video` redirect to `/login?next=…`, which gives
+  one `/login` page under many URLs. Proposed fix if Landon wants it: canonical URL
+  on every page, redirect the vercel.app host to the .org, `robots.ts` and
+  `sitemap.ts` (six public pages), noindex on `/login`. The extension could not open
+  search.google.com (site not allowed), so the exact URLs were not seen.
 
 ### After the 2026-09-19 event (do these, then delete this list)
 
@@ -209,7 +218,18 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
   `~/Documents/wagepeace`. Next.js 15 App Router, React 19, TypeScript,
   inline-style React components (no Tailwind except the account page), Supabase JS.
 - **Hosting:** Vercel project `wagepeace`, team `travislish-8017s-projects`, deployed by
-  `vercel --prod` from Travis's laptop. No staging, no CI.
+  `vercel --prod` from Travis's laptop. No staging, no CI. That team is the one renamed
+  `assignedtolabor` on 2026-09-10, so the old `wagepeace` project sat next to ours.
+  **2026-10-12: theholyrebellion.org left our team.** Travis's Claude session made a
+  NEW `wagepeace` project in a new scope of his ("travislish-8017's projects",
+  `wagepeace-iota.vercel.app`) and claimed the domain with `_vercel` TXT records at
+  DreamHost; Vercel emailed Landon "Domain ownership changed". Verified the same day:
+  www.theholyrebellion.org serves that new project's deployment, and the old project
+  (still in our team, `wagepeace.vercel.app`) serves an older build with no domain.
+  The old project is an orphan: it still holds Travis's secrets (Anthropic key, Meta
+  app id/secret, the old Supabase service-role key) and possibly a cron. Claude did
+  not touch it; deleting it is Landon's/Travis's call once the new project has what
+  it needs.
 - **Data:** Supabase project `wagepeace`, ref `rmiwnhvabqhhcsixyvao`, us-west-2, PG17.
   Postgres + Auth (email/password, Google OAuth, anonymous sign-ins) + Storage (private
   `videos` bucket served via signed URLs, public `avatars` bucket). Schema was applied
