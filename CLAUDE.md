@@ -386,6 +386,10 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     `back` with `?instagram_connected=<username>` or `?instagram_error=<why>` (read by
     `instagramNotice()` on /review and /admin). Scopes `instagram_business_basic` and
     `instagram_business_content_publish`; a grant missing one is refused.
+    Seen live 2026-10-13: Instagram's business login ALWAYS shows its login form first
+    (`force_authentication`), even when the browser is logged in to the account, so
+    connecting means typing the team account's password once; the `force_reauth`
+    parameter was dropped as it changed nothing. Claude never types that password.
   - Posting: `videos.publish_state` queued -> processing -> published | failed, with
     `publish_container_id`, `publish_error`, `post_caption` (what was sent; the script
     by default, editable in a box before the tap), `post_media_id`, `publish_attempts`.
