@@ -6,7 +6,7 @@ import VideoPlayer from "@/components/VideoPlayer";
 import { requireManager } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { describeCapture, pictureWarning } from "@/lib/capture-meta";
-import { areaLabel, STATUS_LABEL, type Area, type VideoWithArea } from "@/lib/types";
+import { AREA_SUMMARY_COLS, areaLabel, STATUS_LABEL, type Area, type VideoWithArea } from "@/lib/types";
 import ReviewActions from "./ReviewActions";
 
 export const metadata: Metadata = { title: "Review video" };
@@ -16,7 +16,7 @@ export default async function ReviewVideoPage({ params }: PageProps<"/review/[id
   const viewer = await requireManager(`/review/${id}`);
   const supabase = await createClient();
   const [{ data: video }, { data: areas }] = await Promise.all([
-    supabase.from("videos").select("*, area:areas(id, name, language, instagram_handle)").eq("id", id).maybeSingle(),
+    supabase.from("videos").select(`*, area:areas(${AREA_SUMMARY_COLS})`).eq("id", id).maybeSingle(),
     supabase.from("areas").select("*").eq("is_active", true).order("sort_order").order("name"),
   ]);
   if (!video) notFound();
@@ -64,7 +64,7 @@ export default async function ReviewVideoPage({ params }: PageProps<"/review/[id
             )}
             {v.uploader_note && <div className="card"><div className="label">Note from uploader</div><p className="text-sm">{v.uploader_note}</p></div>}
             {v.rejection_note && <div className="card"><div className="label">Reason not selected</div><p className="text-sm">{v.rejection_note}</p></div>}
-            <ReviewActions video={v} areas={(areas ?? []) as Area[]} caption={caption} isAdmin={viewer.isAdmin} />
+            <ReviewActions video={v} areas={(areas ?? []) as Area[]} caption={caption} isAdmin={viewer.isAdmin} canConnect={viewer.isAdmin || (!!v.area_id && viewer.managedAreaIds.includes(v.area_id))} />
           </div>
         </div>
       </main>

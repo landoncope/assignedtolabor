@@ -357,6 +357,63 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
   is covered; "audience or location" is information for the admin, not a team
   boundary); the older, lighter routes to lead (the "I'd like to lead this team" tick
   on a join request, "Start a team") still exist until Travis says to retire them.
+- **Instagram posting from the site (built 2026-10-13, Travis's one-tap request).**
+  Migration `20261013120000_instagram_publish.sql`. Code: `src/lib/instagram.ts` (the
+  Instagram API with Instagram Login: authorize URL, code exchange, long-lived token
+  and refresh, /me, Reel container, status, publish, permalink, signed_request parsing;
+  every base URL overridable with `INSTAGRAM_AUTHORIZE_BASE`, `INSTAGRAM_OAUTH_BASE`,
+  `INSTAGRAM_GRAPH_BASE` for the mock), `src/lib/instagram-publish.ts` (the state
+  machine, service role), `src/components/InstagramConnections.tsx` (connect and
+  disconnect per team, on /review for leads and /admin for admins).
+  - Connection: `instagram_accounts`, one row per team, holds the long-lived token (60
+    days; the publish cron refreshes it 10 days before expiry). RLS on with NO policies,
+    so a browser session can never read a token; the server uses the service role after
+    checking the viewer. The team row carries the public part (`areas.instagram_user_id`,
+    `instagram_connected_at`, and `instagram_handle` set to the real username). Flow:
+    `/api/instagram/connect?area=&back=` (a lead of that team or an admin, logged in to
+    the team's Instagram in that browser) sets a nonce cookie and sends them to
+    Instagram's dialog; `/api/instagram/callback` checks nonce and viewer, trades the
+    code for a short then a long-lived token, reads /me, stores it, and returns to
+    `back` with `?instagram_connected=<username>` or `?instagram_error=<why>` (read by
+    `instagramNotice()` on /review and /admin). Scopes `instagram_business_basic` and
+    `instagram_business_content_publish`; a grant missing one is refused.
+  - Posting: `videos.publish_state` queued -> processing -> published | failed, with
+    `publish_container_id`, `publish_error`, `post_caption` (what was sent; the script
+    by default, editable in a box before the tap), `post_media_id`, `publish_attempts`.
+    The server action `postToInstagram(videoId, caption)` approves a pending video (same
+    reviewer fields as Approve), queues it and calls `startPublish`: a 6-hour signed
+    Storage URL and one `POST /me/media` (REELS, share_to_feed) create the container;
+    Instagram fetches the file itself, so nothing large passes through Vercel. The page
+    then polls `/api/videos/[id]/publish-status` every 4 s (leads of that team only);
+    `advancePublish` checks the container and, on FINISHED, calls `media_publish`, reads
+    the permalink and sets `status = 'posted'`, `post_url`, `posted_by` = the lead who
+    tapped. `/api/cron/publish` (every 2 minutes, `CRON_SECRET`) does the same for posts
+    whose lead left the page, and refreshes tokens; `?dry=1` reports only. A failure
+    (file refused, token invalid, etc.) leaves the video approved with the reason on
+    the page, a "Try again" button and the manual download-and-paste flow underneath.
+    Pre-checks before asking Instagram: file present, at most 300 MB, 3 s to 15 min.
+    Without a connected account the review page shows the manual flow as before plus
+    a link to connect.
+  - Meta's callbacks: `POST /api/instagram/deauthorize` and `/api/instagram/data-deletion`
+    take Meta's `signed_request` (HMAC-SHA256 with the Instagram app secret), forget the
+    token for that account id (either of its two ids) and, for deletion, answer with
+    the privacy page URL and a confirmation code. They are to be registered in the Meta
+    app's business login settings once deployed (see Account setup 8).
+  - Env: `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET` (the Instagram product's, see Account
+    setup 8). The connect buttons say "not set up" until both exist.
+  - Tests: `node scripts/dev/instagram-mock.mjs` is a stand-in for Instagram (login
+    redirect, token exchange, /me, container that finishes after two checks or fails
+    when the caption contains MOCKFAIL, publish, permalink). `node
+    scripts/dev/instagram-flow-check.mjs http://localhost:3001` (30 checks, build and
+    start the app with the mock bases, `INSTAGRAM_APP_ID=mock-app-id`,
+    `INSTAGRAM_APP_SECRET=mock-app-secret`, `NEXT_PUBLIC_SITE_URL=http://localhost:3001`,
+    no Turnstile key; the header of the script has the exact commands) drives the real
+    pages in headless Chrome as a throwaway admin with a Klingon test team: connect,
+    one-tap post, a refused file, the cron finishing a post, stale and denied callbacks,
+    token unreadable through the public API, deauthorize, data deletion, disconnect.
+    All 30 passed on 2026-10-13. Not yet exercised against the real Instagram: that
+    needs a tester account and token (Account setup 8); `scripts/dev/instagram-post-test.mjs`
+    posts one stored video with a dashboard token, outside the app, for that first test.
 - **One-tap posting, researched 2026-10-03** (primary sources read that day by a
   research agent; notes in the session scratchpad are not kept, so the facts are here):
   - Instagram, with "Instagram API with Instagram Login" (permissions
@@ -440,12 +497,18 @@ src/lib/capture-meta.ts     CaptureMeta: what the recorder saw, uploaded with ea
 src/lib/lead.ts             team lead application: types, status labels, form validation
 src/lib/local-draft.ts      small localStorage draft (the lead form); upload-draft.ts is the upload flow's
 src/lib/use-initial-snapshot.ts  the draft as it was when the page loaded, hydration-safe (both flows)
-src/components/             Nav, VideoRecorder (multi-clip + teleprompter), VideoPlayer (signed URL)
+src/lib/instagram.ts        Instagram API with Instagram Login (login, tokens, Reel container, publish, signed_request)
+src/lib/instagram-publish.ts  one-tap publish state machine + connection storage (service role)
+src/lib/instagram-notice.ts the ?instagram_connected / ?instagram_error notice after connecting
+src/components/             Nav, VideoRecorder (multi-clip + teleprompter), VideoPlayer (signed URL),
+                            InstagramConnections (connect/disconnect a team's account)
 src/app/                    / landing, /upload flow, /qr poster, /login, /auth/*, /my,
                             /my/teams (join/start a team), /lead (+/video: team lead
                             application), /review (+/[id], /requests), /admin,
-                            /api/videos/[id]/playback-url,
-                            /api/lead-applications/[id]/playback-url, /api/cron/{purge,notify}
+                            /api/videos/[id]/{playback-url,publish-status},
+                            /api/lead-applications/[id]/playback-url,
+                            /api/instagram/{connect,callback,deauthorize,data-deletion},
+                            /api/cron/{purge,notify,publish}
 ```
 
 Commands: `npm run dev`, `npm run build`, `npm run lint`, `npm run typecheck`,

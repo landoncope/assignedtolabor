@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireManager } from "@/lib/auth";
+import { MAX_CAPTION, removeConnection, startPublish, type PublishOutcome } from "@/lib/instagram-publish";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -111,4 +112,40 @@ export async function deleteVideo(videoId: string) {
   }
   revalidatePath("/review");
   return { ok: true };
+}
+
+/**
+ * One tap: approve the video (if it is still pending) and post it to the team's
+ * connected Instagram account. The caption is what the lead sees in the box, the
+ * script by default. Instagram processes the file for a minute or so; the page polls
+ * /api/videos/[id]/publish-status, and the publish cron finishes it if the page is gone.
+ */
+export async function postToInstagram(videoId: string, captionRaw: string): Promise<{ ok: true; outcome: PublishOutcome } | { error: string }> {
+  const v = await requireManager(`/review/${videoId}`);
+  const caption = captionRaw.trim();
+  if (caption.length > MAX_CAPTION) return { error: `The caption is ${caption.length} characters; Instagram allows ${MAX_CAPTION}.` };
+  const supabase = await createClient();
+  const { data: row } = await supabase.from("videos").select("status, publish_state").eq("id", videoId).maybeSingle();
+  if (!row) return { error: "Video not found." };
+  if (row.status === "posted") return { error: "This video is already posted." };
+  if (row.status === "rejected") return { error: "This video was not selected. Move it back to review first." };
+  if (row.publish_state === "processing") return { error: "This video is already on its way to Instagram." };
+  const now = new Date().toISOString();
+  const { error } = await supabase.from("videos").update({
+    ...(row.status === "pending" ? { status: "approved", reviewed_by: v.userId, reviewed_at: now, rejection_note: null } : {}),
+    publish_state: "queued", publish_requested_at: now, publish_requested_by: v.userId, publish_error: null, post_caption: caption || null,
+  }).eq("id", videoId);
+  if (error) return { error: error.message };
+  const outcome = await startPublish(createAdminClient(), videoId);
+  revalidatePath("/review"); revalidatePath(`/review/${videoId}`);
+  return { ok: true, outcome };
+}
+
+/** Forget a team's Instagram token. Leads of the team and admins may. */
+export async function disconnectInstagram(areaId: string) {
+  const v = await requireManager("/review");
+  if (!(v.isAdmin || v.managedAreaIds.includes(areaId))) return { error: "You don't lead that team." };
+  try { await removeConnection(createAdminClient(), { areaId }); } catch (e) { return { error: e instanceof Error ? e.message : String(e) }; }
+  revalidatePath("/review"); revalidatePath("/admin");
+  return { ok: true as const };
 }

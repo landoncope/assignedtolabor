@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import InstagramConnections from "@/components/InstagramConnections";
 import Nav from "@/components/Nav";
 import { requireManager } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { areaLabel, type VideoStatus, type VideoWithArea } from "@/lib/types";
+import { instagramNotice } from "@/lib/instagram-notice";
+import { AREA_SUMMARY_COLS, areaLabel, type Area, type VideoStatus, type VideoWithArea } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Review" };
 
@@ -22,7 +24,7 @@ export default async function ReviewPage({ searchParams }: PageProps<"/review">)
   // RLS limits rows to areas this viewer manages (admins see everything).
   const { data } = await supabase
     .from("videos")
-    .select("*, area:areas(id, name, language, instagram_handle)")
+    .select(`*, area:areas(${AREA_SUMMARY_COLS})`)
     .eq("status", status)
     .order("created_at", { ascending: status !== "pending" ? false : true })
     .limit(200);
@@ -32,6 +34,10 @@ export default async function ReviewPage({ searchParams }: PageProps<"/review">)
   // Finished team lead applications (answers plus video) wait for an admin.
   const { count: leadCount } = viewer.isAdmin ? await supabase.from("lead_applications").select("id", { count: "exact", head: true }).eq("status", "submitted") : { count: 0 };
   const requestCount = (teamRequestCount ?? 0) + (leadCount ?? 0);
+  // The teams this viewer leads (admins: all), with their Instagram connection state.
+  const { data: areaRows } = await supabase.from("areas").select("*").eq("is_active", true).order("sort_order").order("name");
+  const myAreas = ((areaRows ?? []) as Area[]).filter((a) => viewer.isAdmin || viewer.managedAreaIds.includes(a.id));
+  const notice = instagramNotice(sp);
 
   return (
     <>
@@ -39,6 +45,7 @@ export default async function ReviewPage({ searchParams }: PageProps<"/review">)
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
         <h1 className="text-2xl font-bold">Review</h1>
         <p className="mt-1 text-sm text-muted">{viewer.isAdmin ? "All teams, plus videos with no team." : "Videos sent to the teams you lead."}</p>
+        {notice && <p className={`mt-3 rounded-lg border px-3 py-2 text-sm font-medium ${notice.kind === "ok" ? "border-accent/40 text-accent" : "border-danger/40 text-danger"}`}>{notice.text}</p>}
         <Link href="/review/requests" className={`mt-3 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${requestCount ? "border-gold/50 bg-gold/10 font-semibold" : "border-line text-muted hover:text-foreground"}`}>
           {requestCount ? `${requestCount} ${requestCount === 1 ? "person is" : "people are"} waiting to join a team${viewer.isAdmin ? ", start one or lead one" : ""}` : "Team requests"} ›
         </Link>
@@ -73,6 +80,9 @@ export default async function ReviewPage({ searchParams }: PageProps<"/review">)
             ))}
           </ul>
         )}
+        <div className="mt-10">
+          <InstagramConnections areas={myAreas} back="/review" notice={null} />
+        </div>
       </main>
     </>
   );
