@@ -15,6 +15,9 @@ export type Area = {
   name: string;
   language: string;
   instagram_handle: string | null;
+  /** Set while the team's Instagram account is connected for posting (the token itself is never readable here). */
+  instagram_user_id: string | null;
+  instagram_connected_at: string | null;
   is_active: boolean;
   sort_order: number;
   created_at: string;
@@ -47,10 +50,22 @@ export type Video = {
   post_url: string | null;
   file_purged_at: string | null;
   capture_meta: CaptureMeta | null;
+  /** One-tap Instagram publishing (null = never requested). See src/lib/instagram-publish.ts. */
+  publish_state: PublishState | null;
+  publish_requested_at: string | null;
+  publish_requested_by: string | null;
+  publish_container_id: string | null;
+  publish_attempts: number;
+  publish_error: string | null;
+  post_caption: string | null;
+  post_media_id: string | null;
   created_at: string;
 };
+export type PublishState = "queued" | "processing" | "published" | "failed";
 
-export type AreaSummary = Pick<Area, "id" | "name" | "language" | "instagram_handle">;
+export type AreaSummary = Pick<Area, "id" | "name" | "language" | "instagram_handle" | "instagram_user_id" | "instagram_connected_at">;
+/** The columns a page selects for a video's team. */
+export const AREA_SUMMARY_COLS = "id, name, language, instagram_handle, instagram_user_id, instagram_connected_at";
 export type VideoWithArea = Video & { area: AreaSummary | null };
 
 export type ApplicationKind = "start" | "join";

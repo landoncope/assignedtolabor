@@ -1,15 +1,19 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import InstagramConnections from "@/components/InstagramConnections";
 import Nav from "@/components/Nav";
 import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { instagramNotice } from "@/lib/instagram-notice";
 import type { Area, Profile } from "@/lib/types";
 import AreasAdmin, { type AreaWithManagers } from "./AreasAdmin";
 import UsersAdmin from "./UsersAdmin";
 
 export const metadata: Metadata = { title: "Admin" };
 
-export default async function AdminPage() {
+export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
+  const sp = await searchParams;
+  const notice = instagramNotice(sp);
   const viewer = await requireAdmin("/admin");
   const supabase = await createClient();
   const [{ data: areas }, { data: managers }, { data: invites }, { data: members }, { count: teamRequestCount }, { count: leadCount }, { data: users }] = await Promise.all([
@@ -43,6 +47,11 @@ export default async function AdminPage() {
           <h2 className="text-lg font-semibold">Teams and leads</h2>
           <p className="mt-1 text-sm text-muted">A team is a place plus a language. Leads review everything sent to their team and approve people who ask to join it. Add a lead by email; if they haven&apos;t signed in yet, it takes effect the first time they do.</p>
           <AreasAdmin areas={withManagers} />
+        </section>
+        <section className="mt-10">
+          <h2 className="text-lg font-semibold">Instagram accounts</h2>
+          <p className="mt-1 text-sm text-muted">Once a team&rsquo;s account is connected, its leads approve and post with one tap. Leads can connect their own team from the Review page too.</p>
+          <div className="mt-4"><InstagramConnections areas={((areas ?? []) as Area[]).filter((x) => x.is_active)} back="/admin" notice={notice} /></div>
         </section>
         <section className="mt-10">
           <h2 className="text-lg font-semibold">People</h2>
