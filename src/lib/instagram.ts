@@ -46,10 +46,12 @@ async function call(url: string, init?: RequestInit): Promise<Json> {
   const text = await res.text();
   let json: Json | null = null;
   try { json = JSON.parse(text) as Json; } catch { /* not JSON */ }
+  // Graph errors come as { error: { message, type, code, error_subcode } }; the Instagram
+  // OAuth endpoints answer with a flat { error_type, code, error_message }.
   const err = json?.error as Json | undefined;
   if (!res.ok || err) {
     const message = str(err?.error_user_msg) ?? str(err?.message) ?? str(json?.error_message) ?? (text.trim().slice(0, 300) || res.statusText);
-    throw new InstagramError(message, res.status, num(err?.code), num(err?.error_subcode), str(err?.type) ?? undefined);
+    throw new InstagramError(message, res.status, num(err?.code) ?? num(json?.code), num(err?.error_subcode), str(err?.type) ?? str(json?.error_type) ?? undefined);
   }
   return json ?? {};
 }
@@ -171,7 +173,7 @@ export function parseSignedRequest(signedRequest: string, secret = appSecret()):
 
 /** A line for a page or a log: Meta's message plus its codes when it gave any. */
 export function describeError(e: unknown): string {
-  if (e instanceof InstagramError) return `${e.message}${e.code !== undefined ? ` (code ${e.code}${e.subcode !== undefined ? `/${e.subcode}` : ""})` : ""}`;
+  if (e instanceof InstagramError) return `${e.message}${e.code !== undefined || e.type ? ` (${[e.type, e.code !== undefined ? `code ${e.code}${e.subcode !== undefined ? `/${e.subcode}` : ""}` : null].filter(Boolean).join(" ")})` : ""}`;
   return e instanceof Error ? e.message : String(e);
 }
 
