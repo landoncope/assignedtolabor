@@ -99,8 +99,9 @@ Nothing is half-built. Pick up here.
   `~/.claude/settings.json`. A fresh session after a VS Code restart is the real test.
   The classifier also refuses "Credential Materialization" (reading a token off a
   page), which matches the rule that Landon pastes secrets and tokens himself.
-- Still true from 2026-10-03: Landon relays the lead application and the posting plan
-  to Travis; test data (his declined lead application) stays on production; data rate
+- 2026-10-13: Landon sent Travis a Slack message covering the lead application, the
+  one-tap posting, and the asks above (team Instagram accounts, leads, his Facebook
+  name, the three decisions); waiting for his reply. Still true from 2026-10-03: test data (his declined lead application) stays on production; data rate
   8 Mbps is his call; iPhone share button and criteria checklist are offered, not
   requested; Search Console fix proposed, not built.
 
