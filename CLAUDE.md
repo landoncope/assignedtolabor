@@ -135,9 +135,11 @@ Nothing is half-built. Pick up here.
   take; `select caption_state, count(*) from videos group by 1` shows progress. Two
   dates to remember: the Claude promotional credit ends 2026-10-23 (buy credit or
   enable auto-reload before then), and ElevenLabs Starter resets its 1 h 31 m on the
-  monthly renewal. Still waiting on Travis: the teams' Instagram usernames (then the
-  tester invites, then Connect), his Facebook name for the Meta app, the review
-  criteria. The Anthropic key was pasted into chat once (2026-10-15); rotating it is
+  monthly renewal. Philippines' account @liwanag.ni.kristo is invited as a tester
+  (Pending); once accepted, Brady or Christian can tap Connect on the Review page
+  logged in to it. Still waiting on Travis: the other teams' Instagram usernames
+  (then the tester invites, then Connect), his Facebook name for the Meta app, the
+  review criteria. The Anthropic key was pasted into chat once (2026-10-15); rotating it is
   optional (platform.claude.com/settings/keys, then Vercel and .env.local).
 
 ### After the 2026-09-19 event (do these, then delete this list)
@@ -257,8 +259,11 @@ Nothing is half-built. Pick up here.
    routes live since PR #4). Instagram Testers: landon_cope (Landon's own account,
    invited and accepted 2026-10-13, switched to a Creator account that day). The
    dashboard's "Generate access tokens" also produced a token for it (shown once; not
-   stored anywhere by Claude). Still to do: Travis as a second administrator, the app
-   icon, and each real team's account as a tester.
+   stored anywhere by Claude). Instagram Testers added since: liwanag.ni.kristo
+   (Philippines, added 2026-10-15 on Landon's say-so, status Pending until whoever
+   runs that account accepts under Instagram -> Settings -> Apps and websites ->
+   Tester invites; no password re-check was asked). Still to do: Travis as a second
+   administrator, the app icon, and the other five teams' accounts as testers.
 9. ElevenLabs and the Claude API DONE 2026-10-15 (Claude drove the pages in Landon's
    Chrome; Landon paid and pasted): ElevenLabs account of Landon's, upgraded Free ->
    Starter (monthly, $6, first month $1; Speech to Text 1 h 31 m a month, extra API
