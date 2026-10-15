@@ -26,9 +26,9 @@ type VideoRow = {
   id: string; area_id: string | null; status: string; storage_path: string | null; file_purged_at: string | null;
   duration_seconds: number | null; file_size: number | null; script: Script | null;
   publish_state: PublishState | null; publish_container_id: string | null; publish_requested_by: string | null;
-  publish_attempts: number; post_caption: string | null; post_url: string | null; publish_error: string | null;
+  publish_attempts: number; post_caption: string | null; ai_caption: string | null; post_url: string | null; publish_error: string | null;
 };
-const VIDEO_COLS = "id, area_id, status, storage_path, file_purged_at, duration_seconds, file_size, script, publish_state, publish_container_id, publish_requested_by, publish_attempts, post_caption, post_url, publish_error";
+const VIDEO_COLS = "id, area_id, status, storage_path, file_purged_at, duration_seconds, file_size, script, publish_state, publish_container_id, publish_requested_by, publish_attempts, post_caption, ai_caption, post_url, publish_error";
 
 type AccountRow = { area_id: string; ig_user_id: string; username: string | null; access_token: string; token_expires_at: string | null };
 
@@ -79,7 +79,7 @@ export async function startPublish(db: Db, videoId: string): Promise<PublishOutc
   if (problem) return fail(db, v.id, problem);
   const { data: signed, error: signErr } = await db.storage.from("videos").createSignedUrl(v.storage_path!, SIGNED_URL_SECONDS);
   if (signErr || !signed) return fail(db, v.id, `Could not make a link to the file: ${signErr?.message ?? "unknown error"}`);
-  const caption = (v.post_caption ?? captionFor(v.script)).slice(0, MAX_CAPTION);
+  const caption = (v.post_caption ?? v.ai_caption ?? captionFor(v.script)).slice(0, MAX_CAPTION);
   try {
     const containerId = await ig.createReelContainer(acct.access_token, { videoUrl: signed.signedUrl, caption });
     await db.from("videos").update({

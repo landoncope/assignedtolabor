@@ -59,9 +59,20 @@ export type Video = {
   publish_error: string | null;
   post_caption: string | null;
   post_media_id: string | null;
+  /** AI-suggested caption (null = not done yet). See src/lib/captions.ts. */
+  transcript: string | null;
+  transcript_language: string | null;
+  transcript_confidence: number | null;
+  ai_caption: string | null;
+  ai_summary: string | null;
+  caption_state: CaptionState | null;
+  caption_attempts: number;
+  caption_error: string | null;
+  captioned_at: string | null;
   created_at: string;
 };
 export type PublishState = "queued" | "processing" | "published" | "failed";
+export type CaptionState = "done" | "failed" | "skipped";
 
 export type AreaSummary = Pick<Area, "id" | "name" | "language" | "instagram_handle" | "instagram_user_id" | "instagram_connected_at">;
 /** The columns a page selects for a video's team. */

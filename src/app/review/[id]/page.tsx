@@ -5,11 +5,18 @@ import Nav from "@/components/Nav";
 import VideoPlayer from "@/components/VideoPlayer";
 import { requireManager } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { captionsConfigured } from "@/lib/captions";
 import { describeCapture, pictureWarning } from "@/lib/capture-meta";
 import { AREA_SUMMARY_COLS, areaLabel, STATUS_LABEL, type Area, type VideoWithArea } from "@/lib/types";
 import ReviewActions from "./ReviewActions";
 
 export const metadata: Metadata = { title: "Review video" };
+
+/** "tgl" -> "Tagalog" where the runtime knows the code; the code itself otherwise. */
+function languageName(code: string): string {
+  if (code === "tgl" || code === "tl") return "Tagalog"; // ICU says "Filipino" for these; the team is called Tagalog
+  try { return new Intl.DisplayNames(["en"], { type: "language" }).of(code) ?? code; } catch { return code; }
+}
 
 export default async function ReviewVideoPage({ params }: PageProps<"/review/[id]">) {
   const { id } = await params;
@@ -61,6 +68,24 @@ export default async function ReviewVideoPage({ params }: PageProps<"/review/[id
               </div>
             ) : (
               <p className="text-sm text-muted">No script. The uploader improvised.</p>
+            )}
+            {v.ai_summary && (
+              <div className="card">
+                <div className="label">What they say</div>
+                <p className="text-sm">{v.ai_summary}</p>
+                {v.transcript && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-xs text-muted">Transcript ({v.transcript_language ? `${languageName(v.transcript_language)}, ` : ""}automatic, may contain mistakes)</summary>
+                    <p className="mt-1 whitespace-pre-line text-xs text-muted">{v.transcript}</p>
+                  </details>
+                )}
+              </div>
+            )}
+            {!v.ai_summary && v.caption_state === null && captionsConfigured() && v.storage_path && !v.file_purged_at && (v.status === "pending" || v.status === "approved") && (
+              <p className="text-xs text-muted">A suggested caption and a one-line summary are being prepared; they appear here a few minutes after upload.</p>
+            )}
+            {(v.caption_state === "failed" || v.caption_state === "skipped") && v.caption_error && (
+              <p className="text-xs text-muted">No suggested caption: {v.caption_error}</p>
             )}
             {v.uploader_note && <div className="card"><div className="label">Note from uploader</div><p className="text-sm">{v.uploader_note}</p></div>}
             {v.rejection_note && <div className="card"><div className="label">Reason not selected</div><p className="text-sm">{v.rejection_note}</p></div>}

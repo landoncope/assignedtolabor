@@ -243,6 +243,15 @@ Nothing is half-built. Pick up here.
    dashboard's "Generate access tokens" also produced a token for it (shown once; not
    stored anywhere by Claude). Still to do: Travis as a second administrator, the app
    icon, and each real team's account as a tester.
+9. ElevenLabs and the Claude API DONE 2026-10-15 (Claude drove the pages in Landon's
+   Chrome; Landon paid and pasted): ElevenLabs account of Landon's, upgraded Free ->
+   Starter (monthly, $6, first month $1; Speech to Text 1 h 31 m a month, extra API
+   hours only from Creator up), API key "Assigned To Labor (speech to text)" restricted
+   to Speech to Text, never expires, no usage cap (Developers -> API Keys). Claude API
+   key from platform.claude.com/settings/keys (Landon's account). Both are in Vercel
+   (Production + Preview, Secret) as `ELEVENLABS_API_KEY` and `ANTHROPIC_API_KEY`,
+   and in Landon's .env.local for the local live check. The browser tools refuse to
+   act on Stripe checkout and on the Claude Platform pages, so those steps are his.
 
 ## What this is
 
@@ -464,38 +473,66 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     Neither has run against Instagram yet: the app secret and the token are values
     Claude does not handle (the auto-mode classifier also refused to read the token
     off the Meta page, "Credential Materialization"); Landon pastes them.
-- **AI captions (Travis: yes, 2026-10-15; PROPOSED, not built, waiting on Landon's go
-  and two API keys).** He also asked for an "AI suggested video description": an
-  Instagram Reel has one text field, the caption, so one draft serves both; a title
-  and description are separate fields only on Facebook and YouTube and would come
-  from the same transcript when those platforms are added. Facts checked 2026-10-15
-  by a research agent against the vendors' own docs: the Claude API takes no audio or
-  video (its OpenAI-compatible endpoint says audio input "will be ignored and stripped
-  from input"), so a speech-to-text provider does the transcript and Claude drafts the
-  text. Providers that fetch the file from a URL (so the 300 MB file never passes
-  through Vercel; the same 6-hour signed Storage URL the Instagram flow mints), accept
-  MP4, cover English, Spanish, French, Tagalog, Swahili and Mandarin, and detect the
-  language: AssemblyAI Universal-2 (JSON POST with `audio_url` and a `webhook_url`,
-  $0.0025/min, pay as you go with $50 free credit, i.e. about 330 hours; Tagalog "Good"
-  10 to 25% WER, Swahili only "Moderate" 25 to 50%, vendor's own tiers) and ElevenLabs
-  Scribe v2 (multipart with `source_url`, $0.0037/min on a paid plan, claims 5 to 10%
-  WER for Filipino, Swahili and Mandarin; the free plan's 4.5 h/month is likely
-  non-commercial, unverified). Ruled out: OpenAI (25 MB upload cap, no URL), Google STT
-  v2 and Amazon Transcribe (need the bytes in GCS/S3), Mistral Voxtral (no Tagalog or
-  Swahili), Deepgram Nova-3 (no Swahili; its Whisper Cloud works as a fallback),
-  Gemini (URL input capped at 15 MB). Recommended: AssemblyAI first for its billing
-  (nothing to pay for a long time) with the provider behind one module so ElevenLabs
-  can replace it if Swahili captions come out poor. Claude Haiku 5.5 for the draft
-  (about $0.0002 per caption). At 100 videos a month of 1.5 min the whole thing is
-  under $1 a month. Plan: a cron (same pattern as notify) submits each new video once
-  (file present, not purged) with the signed URL and a webhook; `/api/stt/<provider>`
-  stores `videos.transcript` and `transcript_language`, then one Claude call writes
-  `ai_caption` (in the video's language, with hashtags) and `ai_summary` (one English
-  line for the lead and admins, also an answer to the "description" ask). The review
-  page prefills the caption box with the AI draft when it exists, marked "Suggested",
-  the script otherwise; nothing posts without the tap. The privacy page gets a line
-  that audio is sent to the transcription provider. Env: `ASSEMBLYAI_API_KEY` (or
-  `ELEVENLABS_API_KEY`) and `ANTHROPIC_API_KEY`, created and pasted by Landon.
+- **AI-suggested captions (Travis: yes, 2026-10-15; BUILT the same day, see "Where we
+  paused" for what is proven).** He also asked for an "AI suggested video description":
+  an Instagram Reel has one text field, the caption, so one draft serves both; a title
+  and description are separate fields only on Facebook and YouTube and would come from
+  the same transcript when those platforms are added. The lead also gets a one-line
+  English summary of what the person says, on the review page and in the review list.
+  - Facts checked 2026-10-15 by a research agent against the vendors' docs: the Claude
+    API takes no audio or video (its OpenAI-compatible endpoint says audio input "will
+    be ignored and stripped from input"), so a speech-to-text provider makes the
+    transcript and Claude drafts the text. Providers that fetch the file from a URL we
+    hand them (so the 300 MB file never passes through Vercel), accept MP4, cover
+    English, Spanish, French, Tagalog, Swahili and Mandarin, and detect the language:
+    ElevenLabs Scribe v2 (claims 5 to 10% word error for Filipino, Swahili and
+    Mandarin) and AssemblyAI Universal-2 (Tagalog "Good", Swahili only "Moderate", 25
+    to 50%). Ruled out: OpenAI (25 MB upload cap, no URL), Google STT v2 and Amazon
+    Transcribe (need the bytes in GCS/S3), Mistral Voxtral (no Tagalog or Swahili),
+    Deepgram Nova-3 (no Swahili), Gemini (URL input capped at 15 MB). **Landon chose
+    ElevenLabs** (he has used it before and is happy with it; accuracy over price).
+  - Accounts (Account setup 9): ElevenLabs Starter ($6/month, first month $1; 1 h 31 m
+    of transcription a month, then it stops until the next month; the Free plan was
+    only 12 min) and the Claude API (Sonnet 5.5 by default, about a cent per caption;
+    `CAPTION_MODEL` overrides). A normal month here is under an hour of audio; if a
+    month's allowance runs out the review page simply falls back to the script.
+  - Code: `src/lib/captions.ts` (ElevenLabs `POST /v1/speech-to-text` with
+    `model_id=scribe_v2` and `source_url` = a 1-hour signed Storage URL, synchronous,
+    language auto-detected; one Claude Messages call with a system prompt that asks for
+    JSON `{caption, summary}`, the caption in the language actually spoken, faithful
+    to what was said, hashtags on the last line; `ELEVENLABS_BASE` / `ANTHROPIC_BASE`
+    point both at the mock), `/api/cron/captions` (every 2 minutes, `CRON_SECRET`,
+    `maxDuration` 300 s; `?dry=1` reports; `?only=<id>,<id>` limits the sweep to
+    those videos, which the tests use and which re-runs one video by hand). Migration
+    `20261015120000_ai_captions.sql`: `videos.transcript`, `transcript_language`,
+    `transcript_confidence`, `ai_caption`, `ai_summary`, `caption_state` (null =
+    waiting; done, failed, skipped), `caption_attempts`, `caption_error`,
+    `captioned_at`; partial index `videos_captioning` on the waiting ones.
+  - The sweep takes 3 videos a run, approved ones first (they are about to be posted),
+    then the newest pending; files that are gone or over 15 minutes are "skipped";
+    the transcript is stored as soon as it arrives so a failed draft never pays for the
+    audio twice; a quota, key or outage error ("stop") leaves the video untouched and
+    ends the run; a per-video error counts an attempt and three of them mean "failed";
+    a silent clip is "skipped". The review page prefills the caption box with the
+    suggestion when there is one (the script otherwise) and lets the lead flip between
+    "Use the suggested caption" and "Use the script"; a "What they say" card holds the
+    summary and a collapsed transcript; while a fresh video is still waiting it says a
+    suggestion is on the way; a failed or skipped one shows the reason. The one-tap
+    post and the publish cron fall back to `ai_caption` before the script. The privacy
+    page names both processors.
+  - Tests: `node scripts/dev/captions-mock.mjs` (port 3997: a Scribe that fetches the
+    URL it is given and answers a canned Tagalog transcript, a Claude that answers a
+    canned caption; switches `/__config?stt=quota|fail|empty` and
+    `?claude=garbage|overloaded`) and `node scripts/dev/captions-check.mjs
+    http://localhost:3001` (build and start with the mock bases, see its header): dry
+    run, the real sweep and its order, the purged file, the review page and list, the
+    two flip buttons, quota, three failed attempts, a garbage answer keeping the
+    transcript, an outage counting nothing, the stored transcript reused, silence;
+    every run limited with `?only=` to the script's own videos. **Why: the local build
+    talks to the LIVE database, and the first run of this check (2026-10-15) ran the
+    sweep unrestricted, which captioned five real approved videos with the mock's fake
+    transcript; they were reset by hand within the minute, before anything was
+    deployed or seen.** Never call a sweep route bare from a local test.
 - **One-tap posting, researched 2026-10-03** (primary sources read that day by a
   research agent; notes in the session scratchpad are not kept, so the facts are here):
   - Instagram, with "Instagram API with Instagram Login" (permissions
@@ -553,8 +590,8 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
    accounts may not, see "Where we paused"); is every team's Instagram a public
    professional account, and what are the handles (only Philippines has one on file);
    the review criteria Travis wants shown to leads. ANSWERED 2026-10-15: captions
-   should be AI-drafted (Travis: yes, and an AI video description too); see "AI
-   captions" under Decisions for the plan.
+   should be AI-drafted (Travis: yes, and an AI video description too); built the
+   same day, see "AI-suggested captions" under Decisions.
 
 ## Codebase
 
@@ -583,6 +620,7 @@ src/lib/use-initial-snapshot.ts  the draft as it was when the page loaded, hydra
 src/lib/instagram.ts        Instagram API with Instagram Login (login, tokens, Reel container, publish, signed_request)
 src/lib/instagram-publish.ts  one-tap publish state machine + connection storage (service role)
 src/lib/instagram-notice.ts the ?instagram_connected / ?instagram_error notice after connecting
+src/lib/captions.ts         AI-suggested captions: ElevenLabs transcript + Claude draft, the sweep (service role)
 src/components/             Nav, VideoRecorder (multi-clip + teleprompter), VideoPlayer (signed URL),
                             InstagramConnections (connect/disconnect a team's account)
 src/app/                    / landing, /upload flow, /qr poster, /login, /auth/*, /my,
@@ -591,7 +629,7 @@ src/app/                    / landing, /upload flow, /qr poster, /login, /auth/*
                             /api/videos/[id]/{playback-url,publish-status},
                             /api/lead-applications/[id]/playback-url,
                             /api/instagram/{connect,callback,deauthorize,data-deletion},
-                            /api/cron/{purge,notify,publish}
+                            /api/cron/{purge,notify,publish,captions}
 ```
 
 Commands: `npm run dev`, `npm run build`, `npm run lint`, `npm run typecheck`,
@@ -1007,7 +1045,8 @@ redirects to localhost and the sign-in cookie does not follow across hostnames.
   `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET` (2026-10-13, the Instagram product's own
   id and secret, not the Meta app's; see "Meta app" under Account setup),
   `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SITE_URL`, `CRON_SECRET`, `RESEND_API_KEY`,
-  `NEXT_PUBLIC_TURNSTILE_SITE_KEY`.
+  `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `ELEVENLABS_API_KEY`, `ANTHROPIC_API_KEY` (2026-10-15,
+  AI captions; optional `CAPTION_MODEL`).
   Template in `.env.example`.
 
 ## Working rules for Claude in this repo

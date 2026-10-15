@@ -13,7 +13,8 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
   const [postUrl, setPostUrl] = useState("");
-  const [caption, setCaption] = useState(video.post_caption ?? scriptCaption);
+  const suggested = video.ai_caption ?? "";
+  const [caption, setCaption] = useState(video.post_caption ?? (suggested || scriptCaption));
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -87,7 +88,12 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
     <label className="block">
       <span className="label">Caption</span>
       <textarea className="input min-h-28 whitespace-pre-line text-sm" value={caption} onChange={(e) => setCaption(e.target.value)} maxLength={MAX_CAPTION} disabled={pending} />
-      <span className="mt-1 block text-xs text-muted">{caption.length}/{MAX_CAPTION}. The uploader&rsquo;s script, edit as you like.</span>
+      <span className="mt-1 block text-xs text-muted">
+        {caption.length}/{MAX_CAPTION}.{" "}
+        {suggested && caption === suggested ? "Suggested from what they say in the video; edit as you like." : scriptCaption && caption === scriptCaption ? "The uploader\u2019s script; edit as you like." : "Edit as you like."}
+        {suggested && caption !== suggested && <> <button type="button" onClick={() => setCaption(suggested)} disabled={pending} className="underline">Use the suggested caption</button></>}
+        {scriptCaption && caption !== scriptCaption && <> <button type="button" onClick={() => setCaption(scriptCaption)} disabled={pending} className="underline">Use the script</button></>}
+      </span>
     </label>
   );
 
@@ -156,6 +162,7 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
             </>
           ) : (
             <>
+              {captionBox}
               {manualPost}
               {canConnect && video.area && (
                 <p className="text-xs text-muted">
