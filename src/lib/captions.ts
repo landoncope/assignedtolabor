@@ -134,7 +134,11 @@ export async function draftCaption(input: DraftInput): Promise<Draft> {
   try {
     res = await fetch(`${CLAUDE_BASE}/v1/messages`, {
       method: "POST",
-      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      headers: {
+        "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json",
+        // An organization-level key must name the workspace to bill; a workspace-scoped key needs nothing.
+        ...(process.env.ANTHROPIC_WORKSPACE_ID ? { "anthropic-workspace-id": process.env.ANTHROPIC_WORKSPACE_ID } : {}),
+      },
       body: JSON.stringify({ model: CAPTION_MODEL, max_tokens: 1500, temperature: 0.4, system: SYSTEM, messages: [{ role: "user", content: userMessage(input) }] }),
       signal: AbortSignal.timeout(90_000),
     });
@@ -145,8 +149,11 @@ export async function draftCaption(input: DraftInput): Promise<Draft> {
   if (!res.ok) {
     const err = (body as { error?: { type?: string; message?: string } } | null)?.error;
     const detail = `Claude: ${err?.type ? `${err.type}: ` : ""}${err?.message ?? `HTTP ${res.status}`}`;
-    // 400 means our request (most likely the transcript) is the problem; everything else is the account or the service.
-    throw new CaptionError(detail, res.status === 400 ? "retry" : "stop", res.status);
+    // 400 means our request (most likely the transcript) is the problem, unless it is about the key or the
+    // workspace (seen live 2026-10-15: an organization-level key without anthropic-workspace-id); everything
+    // else is the account or the service. Account and service problems never count against the video.
+    const ours = res.status === 400 && !/api key|workspace|authentication|credit|billing/i.test(err?.message ?? "");
+    throw new CaptionError(detail, ours ? "retry" : "stop", res.status);
   }
   const content = ((body as { content?: unknown })?.content ?? []) as { type?: string; text?: string }[];
   const text = content.filter((c) => c.type === "text" && typeof c.text === "string").map((c) => c.text).join("\n");

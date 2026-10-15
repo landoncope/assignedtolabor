@@ -479,6 +479,15 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
   and description are separate fields only on Facebook and YouTube and would come from
   the same transcript when those platforms are added. The lead also gets a one-line
   English summary of what the person says, on the review page and in the review list.
+  - First live sample (2026-10-15, local build, real keys, `?only=` one approved 13 s
+    English clip): ElevenLabs transcribed it in about 3 s, language eng at 0.997, the
+    words matching the planned script almost exactly. The Claude call was refused:
+    "This API key is not scoped to a workspace, so this request must include the
+    anthropic-workspace-id header" (Landon's key is an organization-level key). The
+    code now sends that header when `ANTHROPIC_WORKSPACE_ID` is set, and a 400 about
+    the key or workspace is a "stop" (nothing counted) rather than a counted attempt.
+    The transcript stayed stored, so the retry costs no audio. Waiting on Landon for
+    the workspace id or a workspace-scoped key before the push.
   - Facts checked 2026-10-15 by a research agent against the vendors' docs: the Claude
     API takes no audio or video (its OpenAI-compatible endpoint says audio input "will
     be ignored and stripped from input"), so a speech-to-text provider makes the
