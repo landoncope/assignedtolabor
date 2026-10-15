@@ -49,8 +49,12 @@ assignedtolabor.org to the test account @landon_cope the same day (a synthetic
 after the tap and both PUBLIC from a signed-out browser although the Meta app is
 unpublished. See "Instagram posting from the site" under Decisions and Account setup
 8 for the Meta app. Next: each real team's Instagram account connected by its lead.
+**2026-10-15: AI-suggested captions shipped** (ElevenLabs Scribe transcript, Claude
+draft, one-line summary; proven on a real clip, see "AI-suggested captions" under
+Decisions). The first real Connect attempts were stopped by Instagram because the
+team accounts are not yet testers of the Meta app; waiting on Travis for the usernames.
 
-### Where we paused (2026-10-13, after the first real posts)
+### Where we paused (2026-10-15: captions live, Connect waiting on tester invites)
 
 Nothing is half-built. Pick up here.
 
@@ -123,6 +127,18 @@ Nothing is half-built. Pick up here.
   @liwanag.ni.kristo (the seeded handle was misspelt; both fixed 2026-10-15); the
   other teams' usernames are still unknown, and so is which account Travis tried.
   No instagram_accounts row exists yet. Queue that day: 46 pending, 17 approved.
+
+- **State at the end of 2026-10-15:** captions deployed from main (a4a2b2c and after);
+  the cron runs every 2 minutes on production and works through the backlog, approved
+  videos first. To watch it: `curl -H "authorization: Bearer $CRON_SECRET"
+  https://assignedtolabor.org/api/cron/captions?dry=1` lists what the next run would
+  take; `select caption_state, count(*) from videos group by 1` shows progress. Two
+  dates to remember: the Claude promotional credit ends 2026-10-23 (buy credit or
+  enable auto-reload before then), and ElevenLabs Starter resets its 1 h 31 m on the
+  monthly renewal. Still waiting on Travis: the teams' Instagram usernames (then the
+  tester invites, then Connect), his Facebook name for the Meta app, the review
+  criteria. The Anthropic key was pasted into chat once (2026-10-15); rotating it is
+  optional (platform.claude.com/settings/keys, then Vercel and .env.local).
 
 ### After the 2026-09-19 event (do these, then delete this list)
 
@@ -486,8 +502,18 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     anthropic-workspace-id header" (Landon's key is an organization-level key). The
     code now sends that header when `ANTHROPIC_WORKSPACE_ID` is set, and a 400 about
     the key or workspace is a "stop" (nothing counted) rather than a counted attempt.
-    The transcript stayed stored, so the retry costs no audio. Waiting on Landon for
-    the workspace id or a workspace-scoped key before the push.
+    The transcript stayed stored, so the retry cost no audio. Landon then made a new
+    workspace (wrkspc_01VfLN2PP333cLfLwK5c86cq) and a key scoped to it, and claimed
+    the $200 promotional API credit his Max plan offered. **That credit EXPIRES
+    2026-10-23 and auto-reload is off**: after that date Claude refuses every call
+    ("credit balance is too low", a "stop", nothing counted) and captions pause,
+    the page falling back to the script, until he buys credit or turns auto-reload
+    on. Sonnet 5.5 also refused `temperature` ("deprecated for this model", which
+    did count an attempt), so the request no longer sends one. Then the same clip
+    got its caption in 3 s from the stored transcript: Ty's own words quoted, one
+    emoji, five hashtags on the last line, 351 characters, and a one-line summary.
+    **PROVEN end to end 2026-10-15**, pushed to main the same hour; the production
+    cron captions the backlog (46 min of audio, approved first) over its first runs.
   - Facts checked 2026-10-15 by a research agent against the vendors' docs: the Claude
     API takes no audio or video (its OpenAI-compatible endpoint says audio input "will
     be ignored and stripped from input"), so a speech-to-text provider makes the

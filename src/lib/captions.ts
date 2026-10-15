@@ -139,7 +139,7 @@ export async function draftCaption(input: DraftInput): Promise<Draft> {
         // An organization-level key must name the workspace to bill; a workspace-scoped key needs nothing.
         ...(process.env.ANTHROPIC_WORKSPACE_ID ? { "anthropic-workspace-id": process.env.ANTHROPIC_WORKSPACE_ID } : {}),
       },
-      body: JSON.stringify({ model: CAPTION_MODEL, max_tokens: 1500, temperature: 0.4, system: SYSTEM, messages: [{ role: "user", content: userMessage(input) }] }),
+      body: JSON.stringify({ model: CAPTION_MODEL, max_tokens: 1500, system: SYSTEM, messages: [{ role: "user", content: userMessage(input) }] }),
       signal: AbortSignal.timeout(90_000),
     });
   } catch (e) {
