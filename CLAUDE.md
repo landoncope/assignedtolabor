@@ -104,6 +104,25 @@ Nothing is half-built. Pick up here.
   name, the three decisions); waiting for his reply. Still true from 2026-10-03: test data (his declined lead application) stays on production; data rate
   8 Mbps is his call; iPhone share button and criteria checklist are offered, not
   requested; Search Console fix proposed, not built.
+- **2026-10-15, Travis replied.** YES to AI-suggested captions, and he asked for an
+  AI-suggested "video description" as well (an Instagram Reel has one text field, the
+  caption, so one draft serves both; a separate description matters only for YouTube
+  or Facebook later). And the first two real Connect attempts failed: a lead (Brady
+  Gordon, made a Philippines lead on 2026-10-13 and signed in that day) "saw a screen
+  that told him he didn't have access", and Travis got Instagram's own page
+  instagram.com/oauth/authorize/third_party/error with "Insufficient Developer Role".
+  Cause: the Meta app is unpublished, and Instagram's business login admits only
+  accounts that hold a role on the app (Meta: Standard Access "is intended for apps
+  that will only be used by people who have roles on them"); the only Instagram
+  Tester listed is landon_cope. Not a fault in the site (the site never saw the
+  request: Instagram stops it before the callback). Fix, per team account: add it as
+  an Instagram Tester (App roles -> Roles -> Add People -> Instagram Tester, exact
+  username), the account's owner accepts in Instagram (Settings -> Apps and websites
+  -> Tester invites), then Connect from the Review page while logged in to it. The
+  Review page now says this above the Connect buttons. Philippines' real account is
+  @liwanag.ni.kristo (the seeded handle was misspelt; both fixed 2026-10-15); the
+  other teams' usernames are still unknown, and so is which account Travis tried.
+  No instagram_accounts row exists yet. Queue that day: 46 pending, 17 approved.
 
 ### After the 2026-09-19 event (do these, then delete this list)
 
@@ -191,7 +210,9 @@ Nothing is half-built. Pick up here.
      it with the notification digests; event day sent about 45 in all. Upgrade again
      before any event of that size or larger.
 7. Seed data lives in `supabase/seeds/` (applied by hand with psql, re-runnable).
-   Philippines / Tagalog with Instagram `Liwinag.ni.kristo` and manager invite
+   Philippines / Tagalog with Instagram `liwanag.ni.kristo` (seeded misspelt as
+   `Liwinag.ni.kristo`; corrected in the seed and the row 2026-10-15 after checking the
+   real profile, 1.4k followers) and manager invite
    `holyrebellionph@gmail.com` were seeded 2026-09-10. English, Spanish, French and
    Swahili (language-only teams, no leads yet) were seeded 2026-09-17 at Travis's
    request for the Saturday event; their leads apply from the Teams page.
@@ -443,6 +464,38 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     Neither has run against Instagram yet: the app secret and the token are values
     Claude does not handle (the auto-mode classifier also refused to read the token
     off the Meta page, "Credential Materialization"); Landon pastes them.
+- **AI captions (Travis: yes, 2026-10-15; PROPOSED, not built, waiting on Landon's go
+  and two API keys).** He also asked for an "AI suggested video description": an
+  Instagram Reel has one text field, the caption, so one draft serves both; a title
+  and description are separate fields only on Facebook and YouTube and would come
+  from the same transcript when those platforms are added. Facts checked 2026-10-15
+  by a research agent against the vendors' own docs: the Claude API takes no audio or
+  video (its OpenAI-compatible endpoint says audio input "will be ignored and stripped
+  from input"), so a speech-to-text provider does the transcript and Claude drafts the
+  text. Providers that fetch the file from a URL (so the 300 MB file never passes
+  through Vercel; the same 6-hour signed Storage URL the Instagram flow mints), accept
+  MP4, cover English, Spanish, French, Tagalog, Swahili and Mandarin, and detect the
+  language: AssemblyAI Universal-2 (JSON POST with `audio_url` and a `webhook_url`,
+  $0.0025/min, pay as you go with $50 free credit, i.e. about 330 hours; Tagalog "Good"
+  10 to 25% WER, Swahili only "Moderate" 25 to 50%, vendor's own tiers) and ElevenLabs
+  Scribe v2 (multipart with `source_url`, $0.0037/min on a paid plan, claims 5 to 10%
+  WER for Filipino, Swahili and Mandarin; the free plan's 4.5 h/month is likely
+  non-commercial, unverified). Ruled out: OpenAI (25 MB upload cap, no URL), Google STT
+  v2 and Amazon Transcribe (need the bytes in GCS/S3), Mistral Voxtral (no Tagalog or
+  Swahili), Deepgram Nova-3 (no Swahili; its Whisper Cloud works as a fallback),
+  Gemini (URL input capped at 15 MB). Recommended: AssemblyAI first for its billing
+  (nothing to pay for a long time) with the provider behind one module so ElevenLabs
+  can replace it if Swahili captions come out poor. Claude Haiku 5.5 for the draft
+  (about $0.0002 per caption). At 100 videos a month of 1.5 min the whole thing is
+  under $1 a month. Plan: a cron (same pattern as notify) submits each new video once
+  (file present, not purged) with the signed URL and a webhook; `/api/stt/<provider>`
+  stores `videos.transcript` and `transcript_language`, then one Claude call writes
+  `ai_caption` (in the video's language, with hashtags) and `ai_summary` (one English
+  line for the lead and admins, also an answer to the "description" ask). The review
+  page prefills the caption box with the AI draft when it exists, marked "Suggested",
+  the script otherwise; nothing posts without the tap. The privacy page gets a line
+  that audio is sent to the transcription provider. Env: `ASSEMBLYAI_API_KEY` (or
+  `ELEVENLABS_API_KEY`) and `ANTHROPIC_API_KEY`, created and pasted by Landon.
 - **One-tap posting, researched 2026-10-03** (primary sources read that day by a
   research agent; notes in the session scratchpad are not kept, so the facts are here):
   - Instagram, with "Instagram API with Instagram Login" (permissions
@@ -499,8 +552,9 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
    can pass Meta's Business Verification (Facebook needs it; Instagram for our own
    accounts may not, see "Where we paused"); is every team's Instagram a public
    professional account, and what are the handles (only Philippines has one on file);
-   the review criteria Travis wants shown to leads; and whether captions should be
-   AI-drafted (small running cost, Landon pays).
+   the review criteria Travis wants shown to leads. ANSWERED 2026-10-15: captions
+   should be AI-drafted (Travis: yes, and an AI video description too); see "AI
+   captions" under Decisions for the plan.
 
 ## Codebase
 
