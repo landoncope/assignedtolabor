@@ -964,6 +964,28 @@ redirects to localhost and the sign-in cookie does not follow across hostnames.
     (confirmed in `CoreAudioCaptureSource.cpp`). Nothing plays back while recording, so
     there is no echo to cancel. `audioBitsPerSecond` is 192 kbps (iOS already gave
     ~186 kbps AAC mono; Chrome's default is lower).
+    **Loudness, measured 2026-10-15** (Landon asked whether we touch the volume; a lead
+    had found videos quiet): nothing in the pipeline changes the level, and the 09-17
+    change above removed the only thing that did. `node scripts/dev/loudness-audit.mjs
+    [since]` (read-only, ffmpeg EBU R128 on every stored file) over the 78 files since
+    09-10: iPhone recordings (45) median -43.8 LUFS, range -59.5 to -19.8, peaks around
+    -20 to -30 dBFS; Android (22) median -27.9; files from camera apps (11) median
+    -23.6; speech on social video sits at -16 to -20. So iPhone browser recordings are
+    15 to 25 dB quieter than the same people on Android or in their camera app: a mic
+    gain problem, not a speaking problem. Cause, from the WebKit source
+    (Source/WebCore/platform/mediastream/cocoa/CoreAudioCaptureUnit.cpp,
+    `setupAudioUnit`: `m_shouldUseVPIO = enableEchoCancellation()`; `createAudioUnit`:
+    VoiceProcessingIO when true, RemoteIO otherwise on iOS): the unit is chosen by echo
+    cancellation alone, WebKit sets no gain-control property anywhere, so
+    `autoGainControl` does nothing on iPhones by itself; with echo cancellation off
+    the raw RemoteIO mic comes in low and nothing levels it. Options, none built yet:
+    (a) gain in the recorder through Web Audio (GainNode plus a compressor as limiter,
+    MediaStreamDestination feeding MediaRecorder; the 20 dB of headroom means no
+    clipping), with a live level meter; (b) echo cancellation back on for iPhones
+    (VPIO's AGC, loud again but the phone-call sound the tester disliked); (c) a
+    server-side ffmpeg loudnorm pass, which also fixes stored and uploaded files but
+    needs the worker we avoided. Instagram's own normalisation is claimed by third
+    parties (about -14 LUFS) but undocumented, and cannot be expected to lift -44.
   - Diagnostics: every recording uploads `videos.capture_meta` (type `CaptureMeta` in
     `src/lib/capture-meta.ts`): device/browser from the UA, camera frame size, canvas
     size, codec, the data rate asked for (`askedBitrate`), achieved fps, zoom and whether the camera or the canvas did it, clip
