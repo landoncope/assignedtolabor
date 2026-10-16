@@ -142,6 +142,12 @@ Nothing is half-built. Pick up here.
   (then the tester invites, then Connect), his Facebook name for the Meta app, the
   review criteria. The Anthropic key was pasted into chat once (2026-10-15); rotating it is
   optional (platform.claude.com/settings/keys, then Vercel and .env.local).
+- **2026-10-16, tester invites:** five team accounts are Instagram Testers (all
+  Pending, see Account setup 8). Each account's owner accepts on
+  instagram.com/accounts/manage_access (Tester Invites tab; the phone app lacks it,
+  which is where Travis looked), then the lead taps Connect. Open: a Russian (or
+  Slovak) team does not exist in the app; Spanish and Swahili handles; whether the
+  accounts are professional.
 
 ### After the 2026-09-19 event (do these, then delete this list)
 
@@ -269,7 +275,18 @@ Nothing is half-built. Pick up here.
    Tester Invites. The phone app's "Apps and websites" screen has only the first
    three, which is where Travis looked (screen recording, 2026-10-16). So the
    account's owner opens that address in a browser (the phone's browser is fine),
-   logged in to the team account, and accepts under Tester Invites. Still to do: Travis as a second
+   logged in to the team account, and accepts under Tester Invites.
+   **Testers added 2026-10-16** from the handles Travis sent (each profile checked on
+   instagram.com first; all registered, all Pending): `seek_this_jesus_` (English,
+   "Seek This Jesus", new, 0 posts), `on_es_avec_jesus` (French; the profile is
+   "Kwame Yao Yapo", West African flags in the bio), `_a_new_beginning` (Taiwan /
+   Mandarin, display name 新的開始; Travis pasted it with spaces, "_a _new _beginning",
+   the real username has none), `milosrdenstvo.vasho.vykupitela` (Travis called it the
+   Russian page; the name is Slovak, "mercy of your redeemer"; NO such team exists in
+   the app yet, an admin creates it or a lead applies). These three handles are now on
+   the team rows (`areas.instagram_handle`); Spanish and Swahili still have none.
+   Whether each is a professional account is unknown; Instagram refuses a personal
+   one at Connect with its own message. Still to do: Travis as a second
    administrator, the app icon, and the other five teams' accounts as testers.
 9. ElevenLabs and the Claude API DONE 2026-10-15 (Claude drove the pages in Landon's
    Chrome; Landon paid and pasted): ElevenLabs account of Landon's, upgraded Free ->
