@@ -141,10 +141,13 @@ Nothing is half-built. Pick up here.
   (then the tester invites, then Connect), his Facebook name for the Meta app, the
   review criteria. The Anthropic key was pasted into chat once (2026-10-15); rotating it is
   optional (platform.claude.com/settings/keys, then Vercel and .env.local).
-- **Open PR (2026-10-15): microphone gain in the recorder**, branch `mic-gain`, the
+- **Open PR #5 (2026-10-15): microphone gain in the recorder**, branch `mic-gain`, the
   fix for iPhone recordings being 15 to 25 dB too quiet (see "Loudness, measured
-  2026-10-15" in the recorder notes). Proven in headless Chrome, waiting for Landon's
-  iPhone test on the preview deploy before it merges. The 63 waiting videos stay quiet
+  2026-10-15" in the recorder notes). Proven in headless Chrome. Landon's first look
+  on the iPhone (2026-10-16) only judged the level bar, which he found finicky, so it
+  was removed; the gain stays. Waiting for his two test clips on the preview (normal
+  and `?gain=off`, both uploaded) to measure before it merges. The preview needs a
+  Vercel login on the phone (deployment protection). The 63 waiting videos stay quiet
   as stored; a one-off ffmpeg loudnorm pass over them is a separate decision.
 
 ### After the 2026-09-19 event (do these, then delete this list)
@@ -1003,9 +1006,9 @@ redirects to localhost and the sign-in cookie does not follow across hostnames.
     before a word is heard. The graph is built in `attach()` (after getUserMedia, so
     the AudioContext takes the mic's sample rate), resumed from the record tap (iOS
     keeps it suspended until a gesture), and if it is not running when a clip starts
-    the raw track is recorded and the events say so. A small level bar sits in the
-    timer pill (amber "quiet" under -32 dBFS, red while the limiter pulls more than
-    6 dB), visible from the preview on so people see they are heard. `?gain=off`
+    the raw track is recorded and the events say so. A small level bar in the timer
+    pill was tried and removed the same day (Landon, 2026-10-16: "finicky" on his
+    iPhone; the stage's `read()` still exists for a steadier meter later). `?gain=off`
     records the raw microphone for comparison; `capture_meta.audioGain` carries the
     mode, the gain's travel and the median speech level before and after
     (`describeCapture` prints "mic gain +24 dB (18 to 24), speech -40 -> -16 dBFS").

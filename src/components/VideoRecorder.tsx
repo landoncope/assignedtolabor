@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CaptureMeta, Pipeline, ZoomMode } from "@/lib/capture-meta";
 import { baseMimeType, extensionFor, pickRecorderMimeType } from "@/lib/merge-clips";
 import { FROZEN_PICTURE_SECONDS, readPicture } from "@/lib/mp4-tracks";
-import { createGainStage, type GainStage, type LevelReading } from "@/lib/mic-gain";
+import { createGainStage, type GainStage } from "@/lib/mic-gain";
 import { pictureLostAt, type Slice } from "@/lib/picture-watch";
 import { RECORDING_TIPS } from "@/lib/script";
 
@@ -142,27 +142,6 @@ type ZoomSettings = MediaTrackSettings & { zoom?: number };
 
 export type Capture = { file: File; thumbnail: string; durationSeconds: number; meta?: CaptureMeta };
 
-/**
- * A small bar showing the microphone level after the gain stage, so people see they
- * are being heard before and while they record: amber while too quiet, red while the
- * limiter is working hard. Polls on its own so the recorder does not re-render.
- */
-function LevelMeter({ read }: { read: () => LevelReading | null }) {
-  const [level, setLevel] = useState<LevelReading | null>(null);
-  useEffect(() => {
-    const id = setInterval(() => setLevel(read()), 100);
-    return () => clearInterval(id);
-  }, [read]);
-  if (!level) return null;
-  const fill = Math.max(0, Math.min(1, (level.outDb + 50) / 50));
-  const colour = !level.running ? "bg-neutral-500" : level.reductionDb < -6 ? "bg-red-400" : level.outDb < -32 ? "bg-amber-400" : "bg-emerald-400";
-  return (
-    <span className="flex items-center gap-1.5" aria-label="Microphone level" title="Microphone level">
-      <span className="block h-1.5 w-11 overflow-hidden rounded-full bg-white/25"><span className={`block h-full rounded-full ${colour}`} style={{ width: `${Math.round(fill * 100)}%`, transition: "width 100ms linear" }} /></span>
-      {level.running && level.inDb > -58 && level.outDb < -32 && <span className="text-[10px] font-semibold text-amber-300">quiet</span>}
-    </span>
-  );
-}
 
 /**
  * Multi-clip camera recorder. Tap the red button to start a clip, tap again to end
@@ -641,11 +620,10 @@ export default function VideoRecorder({
         {unsliced && cam !== "error" && (
           <div className="pointer-events-none absolute bottom-24 left-3 rounded-full bg-red-600/90 px-2.5 py-1 text-[11px] font-semibold text-white">Test: old recorder, may freeze</div>
         )}
-        {(cam === "live" || recording) && !merging && (
+        {recording && (
           <div className="absolute left-3 bottom-6 flex items-center gap-1.5 rounded-full bg-black/60 px-2.5 py-1 text-xs font-semibold text-white">
-            {recording && <span className="h-2 w-2 rounded-full bg-red-500" />}
-            {recording && <span>{Math.floor(secs / 60)}:{String(secs % 60).padStart(2, "0")}</span>}
-            <LevelMeter read={() => gainRef.current?.read() ?? null} />
+            <span className="h-2 w-2 rounded-full bg-red-500" />
+            {Math.floor(secs / 60)}:{String(secs % 60).padStart(2, "0")}
           </div>
         )}
         {cam !== "error" && !merging && (
