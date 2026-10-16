@@ -141,6 +141,11 @@ Nothing is half-built. Pick up here.
   (then the tester invites, then Connect), his Facebook name for the Meta app, the
   review criteria. The Anthropic key was pasted into chat once (2026-10-15); rotating it is
   optional (platform.claude.com/settings/keys, then Vercel and .env.local).
+- **Open PR (2026-10-15): microphone gain in the recorder**, branch `mic-gain`, the
+  fix for iPhone recordings being 15 to 25 dB too quiet (see "Loudness, measured
+  2026-10-15" in the recorder notes). Proven in headless Chrome, waiting for Landon's
+  iPhone test on the preview deploy before it merges. The 63 waiting videos stay quiet
+  as stored; a one-off ffmpeg loudnorm pass over them is a separate decision.
 
 ### After the 2026-09-19 event (do these, then delete this list)
 
@@ -654,6 +659,7 @@ src/lib/picture-watch.ts    while recording: do the one-second slices still carr
 src/lib/mp4-orientation.ts  reads an MP4's rotation matrix; restores it after a merge if lost
 src/lib/video-thumb.ts      thumbnail for files picked with "Upload a video I already have"
 src/lib/capture-meta.ts     CaptureMeta: what the recorder saw, uploaded with each recording
+src/lib/mic-gain.ts         microphone gain stage + limiter + level readings for the recorder (2026-10-15)
 src/lib/lead.ts             team lead application: types, status labels, form validation
 src/lib/local-draft.ts      small localStorage draft (the lead form); upload-draft.ts is the upload flow's
 src/lib/use-initial-snapshot.ts  the draft as it was when the page loaded, hydration-safe (both flows)
@@ -986,6 +992,31 @@ redirects to localhost and the sign-in cookie does not follow across hostnames.
     server-side ffmpeg loudnorm pass, which also fixes stored and uploaded files but
     needs the worker we avoided. Instagram's own normalisation is claimed by third
     parties (about -14 LUFS) but undocumented, and cannot be expected to lift -44.
+    **Built 2026-10-15, option (a): the microphone gain stage** (`src/lib/mic-gain.ts`,
+    Landon's go). The mic track goes mic -> GainNode -> DynamicsCompressor as a
+    limiter (threshold -6 dB, ratio 20, attack 2 ms) -> MediaStreamAudioDestination,
+    and MediaRecorder records that track with the canvas (or camera) video track;
+    nothing is played back, so no feedback. The gain adapts every 100 ms: the loudest
+    speech frame of the last 2 s (short-window RMS above a -58 dBFS gate) is steered
+    to -16 dBFS, rising at 6 dB/s, dropping at once, held during silence so room noise
+    is never cranked up, capped at +30 dB; iPhones start at +18 dB and Android at +6
+    before a word is heard. The graph is built in `attach()` (after getUserMedia, so
+    the AudioContext takes the mic's sample rate), resumed from the record tap (iOS
+    keeps it suspended until a gesture), and if it is not running when a clip starts
+    the raw track is recorded and the events say so. A small level bar sits in the
+    timer pill (amber "quiet" under -32 dBFS, red while the limiter pulls more than
+    6 dB), visible from the preview on so people see they are heard. `?gain=off`
+    records the raw microphone for comparison; `capture_meta.audioGain` carries the
+    mode, the gain's travel and the median speech level before and after
+    (`describeCapture` prints "mic gain +24 dB (18 to 24), speech -40 -> -16 dBFS").
+    Checks: the planning maths in a node script (converges to +24 in 1 s for a -40 dB
+    speaker, holds through pauses), and `node scripts/dev/gain-check.mjs
+    http://127.0.0.1:3001 fake-cam.y4m` (the real /upload flow in headless Chrome,
+    `--fake-audio` on headless-upload-flow.mjs playing a -45.7 LUFS synthetic voice):
+    raw -42.6 LUFS, through the stage -16.8 LUFS, peaks -9.4 dBFS, all 8 checks
+    passing 2026-10-15. NOT yet tried on a phone: Landon tests on his iPhone from the
+    PR preview (record once normally, once with `?gain=off`, upload both; the audit
+    script and the review page's capture line show the difference), then merge.
   - Diagnostics: every recording uploads `videos.capture_meta` (type `CaptureMeta` in
     `src/lib/capture-meta.ts`): device/browser from the UA, camera frame size, canvas
     size, codec, the data rate asked for (`askedBitrate`), achieved fps, zoom and whether the camera or the canvas did it, clip
