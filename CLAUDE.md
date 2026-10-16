@@ -121,8 +121,9 @@ Nothing is half-built. Pick up here.
   Tester listed is landon_cope. Not a fault in the site (the site never saw the
   request: Instagram stops it before the callback). Fix, per team account: add it as
   an Instagram Tester (App roles -> Roles -> Add People -> Instagram Tester, exact
-  username), the account's owner accepts in Instagram (Settings -> Apps and websites
-  -> Tester invites), then Connect from the Review page while logged in to it. The
+  username), the account's owner accepts on instagram.com/accounts/manage_access in
+  a browser (the Tester Invites tab; the phone app lacks it), then Connect from the
+  Review page while logged in to it. The
   Review page now says this above the Connect buttons. Philippines' real account is
   @liwanag.ni.kristo (the seeded handle was misspelt; both fixed 2026-10-15); the
   other teams' usernames are still unknown, and so is which account Travis tried.
@@ -261,8 +262,14 @@ Nothing is half-built. Pick up here.
    dashboard's "Generate access tokens" also produced a token for it (shown once; not
    stored anywhere by Claude). Instagram Testers added since: liwanag.ni.kristo
    (Philippines, added 2026-10-15 on Landon's say-so, status Pending until whoever
-   runs that account accepts under Instagram -> Settings -> Apps and websites ->
-   Tester invites; no password re-check was asked). Still to do: Travis as a second
+   runs that account accepts it; no password re-check was asked). **Where the invite
+   is accepted (verified 2026-10-16 on landon_cope):** on the WEB,
+   https://www.instagram.com/accounts/manage_access/ (Settings -> App website
+   permissions -> Apps and websites) has four tabs, Active / Expired / Removed /
+   Tester Invites. The phone app's "Apps and websites" screen has only the first
+   three, which is where Travis looked (screen recording, 2026-10-16). So the
+   account's owner opens that address in a browser (the phone's browser is fine),
+   logged in to the team account, and accepts under Tester Invites. Still to do: Travis as a second
    administrator, the app icon, and the other five teams' accounts as testers.
 9. ElevenLabs and the Claude API DONE 2026-10-15 (Claude drove the pages in Landon's
    Chrome; Landon paid and pasted): ElevenLabs account of Landon's, upgraded Free ->
