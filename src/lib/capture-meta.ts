@@ -33,6 +33,13 @@ export type CaptureMeta = {
   /** "12.3s into clip 1: camera frames stopped (preview paused)" and the like. */
   events: string[];
   /**
+   * The microphone gain stage (src/lib/mic-gain.ts, since 2026-10-15): auto = the
+   * levelled track was recorded, with the gain's travel in dB and the median level of
+   * the speech frames before and after it; off = `?gain=off`, the raw track on purpose;
+   * unavailable = the browser could not build the graph (the events say why).
+   */
+  audioGain?: { mode: "auto"; startDb: number; minDb: number; maxDb: number; endDb: number; inputDb: number | null; outputDb: number | null; limitedSeconds: number } | { mode: "off" | "unavailable" };
+  /**
    * Read back from the finished file on the device (src/lib/mp4-tracks.ts, since
    * 2026-09-19): how long the picture and the sound run, and the longest time one frame
    * is held. A hold of more than a second or two is a frozen picture.
@@ -68,5 +75,9 @@ export function describeCapture(m: CaptureMeta): string {
   parts.push(`zoom ${m.zoom}× ${m.zoomMode === "native" ? "by the camera" : "by cropping"}`);
   parts.push(`${m.clips} clip${m.clips === 1 ? "" : "s"}${m.merged ? ", merged" : ""}`);
   if (m.stalledSeconds > 0) parts.push(`${m.stalledSeconds}s without new camera frames`);
+  const g = m.audioGain;
+  if (g?.mode === "auto") parts.push(`mic gain +${g.endDb} dB (${g.minDb === g.maxDb ? "steady" : `${g.minDb} to ${g.maxDb}`})${g.inputDb !== null ? `, speech ${g.inputDb} -> ${g.outputDb} dBFS` : ", no speech heard"}${g.limitedSeconds > 0 ? `, limited ${g.limitedSeconds}s` : ""}`);
+  else if (g?.mode === "off") parts.push("TEST MODE: mic gain off, raw microphone");
+  else if (g?.mode === "unavailable") parts.push("mic gain unavailable, raw microphone");
   return parts.join(" · ");
 }

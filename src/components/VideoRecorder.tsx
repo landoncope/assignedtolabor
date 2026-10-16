@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CaptureMeta, Pipeline, ZoomMode } from "@/lib/capture-meta";
 import { baseMimeType, extensionFor, pickRecorderMimeType } from "@/lib/merge-clips";
 import { FROZEN_PICTURE_SECONDS, readPicture } from "@/lib/mp4-tracks";
+import { createGainStage, type GainStage } from "@/lib/mic-gain";
 import { pictureLostAt, type Slice } from "@/lib/picture-watch";
 import { RECORDING_TIPS } from "@/lib/script";
 
@@ -61,6 +62,10 @@ function preferredPipeline(): Pipeline {
  */
 function recordUnsliced(): boolean {
   return typeof window !== "undefined" && new URLSearchParams(window.location.search).get("rec") === "unsliced";
+}
+/** `?gain=off` records the raw microphone, to compare against the gain stage on the same phone (src/lib/mic-gain.ts). */
+function gainDisabled(): boolean {
+  return typeof window !== "undefined" && new URLSearchParams(window.location.search).get("gain") === "off";
 }
 /** True when the frame can be recorded as it is: upright and 9:16 (1080x1920, 720x1280). */
 function isPortrait916(v: HTMLVideoElement): boolean {
@@ -137,6 +142,7 @@ type ZoomSettings = MediaTrackSettings & { zoom?: number };
 
 export type Capture = { file: File; thumbnail: string; durationSeconds: number; meta?: CaptureMeta };
 
+
 /**
  * Multi-clip camera recorder. Tap the red button to start a clip, tap again to end
  * it. Clips can be deleted individually. "Done" returns one file: a single clip as-is,
@@ -176,6 +182,8 @@ export default function VideoRecorder({
   const nativeZoomRef = useRef<number | null>(null);
   // Keeps the phone from dimming or locking mid-take (iOS 16.4+, Android Chrome).
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
+  // The microphone gain stage (src/lib/mic-gain.ts); null = recording the raw track.
+  const gainRef = useRef<GainStage | null>(null);
 
   const [cam, setCam] = useState<"idle" | "live" | "recording" | "error">("idle");
   const [clips, setClips] = useState<Clip[]>([]);
@@ -204,6 +212,7 @@ export default function VideoRecorder({
   const [zoomMode, setZoomMode] = useState<ZoomMode>("canvas");
   const [pipelinePref] = useState<Pipeline>(preferredPipeline);
   const [unsliced] = useState<boolean>(recordUnsliced);
+  const [gainOff] = useState<boolean>(gainDisabled);
   const zoomRef = useRef<number>(zoom);
   zoomRef.current = zoom;
   // With the camera zooming, the preview and the canvas use the frame as is. The camera
@@ -245,6 +254,8 @@ export default function VideoRecorder({
   function teardown() {
     if (introTimerRef.current) { clearTimeout(introTimerRef.current); introTimerRef.current = null; }
     stopDrawing();
+    gainRef.current?.stop();
+    gainRef.current = null;
     const rec = recorderRef.current;
     if (rec && rec.state !== "inactive") { rec.onstop = null; try { rec.stop(); } catch { /* ignore */ } }
     recorderRef.current = null;
@@ -288,6 +299,10 @@ export default function VideoRecorder({
       t.addEventListener("unmute", () => logEvent(`${t.kind} track unmuted`));
       t.addEventListener("ended", () => logEvent(`${t.kind} track ended`));
     }
+    const mic = stream.getAudioTracks()[0];
+    gainRef.current?.stop();
+    gainRef.current = mic && !gainOff ? createGainStage(mic, navigator.userAgent, note) : null;
+    if (gainOff) note("TEST MODE: mic gain off, recording the raw microphone");
     const v = videoRef.current;
     if (v) { v.srcObject = stream; v.muted = true; v.play().catch(() => {}); }
     setCam("live");
@@ -434,7 +449,14 @@ export default function VideoRecorder({
     startFrameLoop(v, paint);
     const canvasStream = canvas.captureStream(30);
     canvasStreamRef.current = canvasStream;
-    return new MediaStream([...canvasStream.getVideoTracks(), ...cam.getAudioTracks()]);
+    return new MediaStream([...canvasStream.getVideoTracks(), ...recordedAudio(cam)]);
+  }
+  /** The levelled microphone when the gain stage is running, else the raw track. */
+  function recordedAudio(cam: MediaStream): MediaStreamTrack[] {
+    const g = gainRef.current;
+    if (g?.ready()) return [g.track];
+    if (g) note("mic gain not running at clip start; recording the raw microphone");
+    return cam.getAudioTracks();
   }
   function beginClip() {
     const cam = streamRef.current, v = videoRef.current;
@@ -451,7 +473,7 @@ export default function VideoRecorder({
     const canvasStream = direct ? null : startCanvasCapture();
     const pipeline: Pipeline = canvasStream ? "canvas" : "camera";
     if (!canvasStream) startCameraWatch();
-    const source = canvasStream ?? cam;
+    const source = canvasStream ?? new MediaStream([...cam.getVideoTracks(), ...recordedAudio(cam)]);
     let rec: MediaRecorder;
     try { rec = new MediaRecorder(source, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: VIDEO_BITRATE, audioBitsPerSecond: AUDIO_BITRATE }); }
     catch { stopDrawing(); setError("Recording isn't supported in this browser. Try uploading a file instead."); return; }
@@ -496,6 +518,7 @@ export default function VideoRecorder({
     setCam("recording");
   }
   function tapRecord() {
+    void gainRef.current?.resume(); // a user gesture: the audio graph may have been waiting for one
     if (merging || countdown !== null || tips !== "off") return;
     if (cam === "error") { startCamera(); return; }
     if (cam === "recording") { recorderRef.current?.stop(); return; }
@@ -531,6 +554,7 @@ export default function VideoRecorder({
       merged: cs.length > 1,
       stalledSeconds: Math.round(d.repaints / 10),
       events: d.events,
+      audioGain: gainOff ? { mode: "off" } : gainRef.current ? { mode: "auto", ...gainRef.current.stats() } : { mode: "unavailable" },
     };
   }
   async function done() {
