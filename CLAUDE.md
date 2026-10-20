@@ -149,7 +149,7 @@ Nothing is half-built. Pick up here.
   (or Travis as admin, from /admin) logging in to the team's Instagram in a browser
   and tapping Connect, which then shows Instagram's login and Allow. Caption backlog:
   done (59 done, 3 skipped). Landon's two mic-gain test clips (PR #5) have not been
-  uploaded; the Claude promotional credit ends 2026-10-23.
+  uploaded; the Claude API credit renews monthly with the Max plan (see Decisions).
 
 ### After the 2026-09-19 event (do these, then delete this list)
 
@@ -544,11 +544,15 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     the key or workspace is a "stop" (nothing counted) rather than a counted attempt.
     The transcript stayed stored, so the retry cost no audio. Landon then made a new
     workspace (wrkspc_01VfLN2PP333cLfLwK5c86cq) and a key scoped to it, and claimed
-    the $200 promotional API credit his Max plan offered. **That credit EXPIRES
-    2026-10-23 and auto-reload is off**: after that date Claude refuses every call
-    ("credit balance is too low", a "stop", nothing counted) and captions pause,
-    the page falling back to the script, until he buys credit or turns auto-reload
-    on. Sonnet 5.5 also refused `temperature` ("deprecated for this model", which
+    the $200 promotional API credit his Max plan offered. **Checked 2026-10-20: that
+    credit is a MONTHLY grant of the Max 20x plan** ("API credit (Max 20x)", $200 on
+    10/15 expiring 10/23, another $200 on 10/20 expiring 11/23, $399.70 available,
+    $0.30 spent on captions so far), so nothing needs buying while the Max plan
+    continues; if it ever lapses, Claude refuses every call ("credit balance is too
+    low", a "stop", nothing counted) and captions pause, the page falling back to the
+    script, until credit is bought or auto-reload turned on (both off today). The
+    console organisation is "Landon / landoncope.dev"; the claude.ai account's own
+    usage credits are a different balance. Sonnet 5.5 also refused `temperature` ("deprecated for this model", which
     did count an attempt), so the request no longer sends one. Then the same clip
     got its caption in 3 s from the stored transcript: Ty's own words quoted, one
     emoji, five hashtags on the last line, 351 characters, and a one-line summary.
