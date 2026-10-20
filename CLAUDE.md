@@ -149,7 +149,11 @@ Nothing is half-built. Pick up here.
   (or Travis as admin, from /admin) logging in to the team's Instagram in a browser
   and tapping Connect, which then shows Instagram's login and Allow. Caption backlog:
   done (59 done, 3 skipped). Landon's two mic-gain test clips (PR #5) have not been
-  uploaded; the Claude API credit renews monthly with the Max plan (see Decisions).
+  uploaded; the Claude API credit renews monthly with the Max plan (see Decisions). Landon
+  sent Travis the per-team Connect instructions on 2026-10-20 (log in to the team's
+  Instagram in a browser, tap Connect on /review or /admin, type the password, Allow);
+  waiting for the first connection and the French acceptance. The working tree is on
+  `main`; PR #5 lives on branch `mic-gain`.
 
 ### After the 2026-09-19 event (do these, then delete this list)
 
