@@ -142,12 +142,14 @@ Nothing is half-built. Pick up here.
   (then the tester invites, then Connect), his Facebook name for the Meta app, the
   review criteria. The Anthropic key was pasted into chat once (2026-10-15); rotating it is
   optional (platform.claude.com/settings/keys, then Vercel and .env.local).
-- **2026-10-16, tester invites:** five team accounts are Instagram Testers (all
-  Pending, see Account setup 8). Each account's owner accepts on
-  instagram.com/accounts/manage_access (Tester Invites tab; the phone app lacks it,
-  which is where Travis looked), then the lead taps Connect. Open: a Russian (or
-  Slovak) team does not exist in the app; Spanish and Swahili handles; whether the
-  accounts are professional.
+- **2026-10-20, tester invites accepted:** four team accounts accepted (Philippines,
+  Slovak, Taiwan, English); the French account was swapped to ensembleenchrist1 and
+  is pending its acceptance; Spanish and Swahili have no account yet. The Slovak team
+  exists now (no lead). NOTHING IS CONNECTED YET: the next step is each team's lead
+  (or Travis as admin, from /admin) logging in to the team's Instagram in a browser
+  and tapping Connect, which then shows Instagram's login and Allow. Caption backlog:
+  done (59 done, 3 skipped). Landon's two mic-gain test clips (PR #5) have not been
+  uploaded; the Claude promotional credit ends 2026-10-23.
 
 ### After the 2026-09-19 event (do these, then delete this list)
 
@@ -286,7 +288,16 @@ Nothing is half-built. Pick up here.
    the app yet, an admin creates it or a lead applies). These three handles are now on
    the team rows (`areas.instagram_handle`); Spanish and Swahili still have none.
    Whether each is a professional account is unknown; Instagram refuses a personal
-   one at Connect with its own message. Still to do: Travis as a second
+   one at Connect with its own message.
+   **2026-10-20:** Travis confirmed the Slovak channel and the Chinese username, and
+   said every account had accepted. The roles page agreed for liwanag.ni.kristo,
+   milosrdenstvo.vasho.vykupitela, _a_new_beginning and seek_this_jesus_ (no Pending
+   badge). The French entry had changed hands: on_es_avec_jesus was gone and
+   `ensembleenchrist1` ("Ensemble en Christ", a French community account, 2 posts) was
+   listed, Pending; only Landon can edit the roles, so he swapped it. The French team
+   row now carries ensembleenchrist1. A **Slovak team** was created the same day
+   (name Slovak, language Slovak, handle milosrdenstvo.vasho.vykupitela, sort_order
+   60, no lead yet). Spanish and Swahili: Travis is still working on them. Still to do: Travis as a second
    administrator, the app icon, and the other five teams' accounts as testers.
 9. ElevenLabs and the Claude API DONE 2026-10-15 (Claude drove the pages in Landon's
    Chrome; Landon paid and pasted): ElevenLabs account of Landon's, upgraded Free ->
