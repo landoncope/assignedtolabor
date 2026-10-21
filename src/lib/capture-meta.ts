@@ -35,9 +35,11 @@ export type CaptureMeta = {
   /**
    * Read back from the finished file on the device (src/lib/mp4-tracks.ts, since
    * 2026-09-19): how long the picture and the sound run, and the longest time one frame
-   * is held. A hold of more than a second or two is a frozen picture.
+   * is held. A hold of more than a second or two is a frozen picture. `audited` (an ISO
+   * date) marks a result read from the stored file later, by
+   * scripts/dev/picture-backfill.mjs, for recordings made before the device check existed.
    */
-  picture?: { seconds: number; sound: number; longestHold: number; holdAt: number } | null;
+  picture?: { seconds: number; sound: number; longestHold: number; holdAt: number; audited?: string } | null;
 };
 
 /** "The picture freezes 0:10 in and stays frozen for 73 s." when the file's own check found that, else null. */
@@ -45,7 +47,8 @@ export function pictureWarning(m: CaptureMeta): string | null {
   const p = m.picture;
   if (!p || p.longestHold <= 1.5) return null;
   const at = Math.round(p.holdAt);
-  return `The picture freezes ${Math.floor(at / 60)}:${String(at % 60).padStart(2, "0")} in and stays frozen for ${Math.round(p.longestHold)} s (found by the recorder's own check of the file).`;
+  const by = p.audited ? `found by a check of the stored file on ${p.audited.slice(0, 10)}` : "found by the recorder's own check of the file";
+  return `The picture freezes ${Math.floor(at / 60)}:${String(at % 60).padStart(2, "0")} in and stays frozen for ${Math.round(p.longestHold)} s (${by}).`;
 }
 
 export function deviceLabel(ua: string): string {

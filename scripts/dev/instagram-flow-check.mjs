@@ -60,6 +60,7 @@ try {
     { hook: "Hook five", body: "Too big for Instagram.", cta: null },
     { hook: "Hook six", body: "File already purged.", cta: null },
     { hook: "Hook seven", body: "Disconnected while in flight.", cta: null },
+    { hook: "Hook eight", body: "Picture froze 10 s in (a 2026-09-19 iPhone file).", cta: null },
   ];
   for (let i = 0; i < scripts.length; i++) {
     const path = `${created.userId}/mock-${ts}-${i}.mp4`;
@@ -70,9 +71,15 @@ try {
     if (vErr) throw new Error(vErr.message);
     created.videoIds.push(v.id);
   }
-  const [A, B, C, D, E, F, G] = created.videoIds;
+  const [A, B, C, D, E, F, G, H] = created.videoIds;
   await db.from("videos").update({ file_size: 400 * 1048576 }).eq("id", E);
   await db.from("videos").update({ storage_path: null, file_purged_at: new Date().toISOString() }).eq("id", F);
+  // H looks like one of the frozen event recordings after scripts/dev/picture-backfill.mjs stored its check.
+  await db.from("videos").update({ capture_meta: {
+    ua: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.1 Mobile/15E148 Safari/604.1",
+    camera: "1080x1920", recorded: "1080x1920", codec: "video/mp4", fps: 30, zoom: 1.5, zoomMode: "native", clips: 1, merged: false, stalledSeconds: 0, events: [],
+    picture: { seconds: 83.9, sound: 83.9, longestHold: 73.4, holdAt: 10.5, audited: "2026-10-21T16:00:00.000Z" },
+  } }).eq("id", H);
   const shots = join(process.argv[4] ?? tmp, "shots"); mkdirSync(shots, { recursive: true });
 
   // Unauthenticated callers.
@@ -134,7 +141,9 @@ try {
   await page.getByRole("button", { name: /Approve and post to @atl_mock_team/ }).click();
   await page.getByText("Sending to Instagram").waitFor({ timeout: 15_000 });
   await page.goto(`${base}/review`);
-  const cron = () => fetch(`${base}/api/cron/publish`, { headers: { authorization: `Bearer ${env.CRON_SECRET}` } }).then((r) => r.json());
+  // Scoped to this run's own rows: the local build reads the LIVE database, where real
+  // posts may be in flight and real tokens must never meet the mock.
+  const cron = () => fetch(`${base}/api/cron/publish?only=${created.videoIds.join(",")}&area=${created.areaId}`, { headers: { authorization: `Bearer ${env.CRON_SECRET}` } }).then((r) => r.json());
   const run1 = await cron();
   check("cron run 1 sees the processing post", run1.posts?.some((p) => p.id === C && p.before === "processing"), JSON.stringify(run1).slice(0, 200));
   const run2 = await cron();
@@ -184,6 +193,20 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: join(shots, "failed-phone.png"), fullPage: true });
   await page.setViewportSize({ width: 1280, height: 900 });
+
+  // A recording whose picture froze (the iPhone files of 2026-09-19): the page offers no
+  // one-tap button and says why; the server refuses it before any request even when queued by hand.
+  await page.goto(`${base}/review/${H}`);
+  const bodyH = await page.textContent("body");
+  check("frozen recording has no one-tap button and says why", (await page.getByRole("button", { name: /Approve and post/ }).count()) === 0 && /picture freezes 0:11 in and stays frozen for 73 s/.test(bodyH) && /record again/.test(bodyH) && /check of the stored file on 2026-10-21/.test(bodyH));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: join(shots, "frozen-phone.png"), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await db.from("videos").update({ status: "approved", reviewed_by: created.userId, reviewed_at: new Date().toISOString(), publish_state: "queued", publish_requested_at: new Date().toISOString(), publish_requested_by: created.userId }).eq("id", H);
+  const containersBeforeH = (await (await fetch(`${mock}/__state`)).json()).containers.length;
+  await cron();
+  const vH = await video(H, "publish_state, publish_error");
+  check("frozen recording is refused before asking Instagram", vH?.publish_state === "failed" && /freezes 0:11 in/.test(vH.publish_error ?? "") && (await (await fetch(`${mock}/__state`)).json()).containers.length === containersBeforeH, vH?.publish_error ?? "");
 
   // A post that was queued but never started (the action died mid-way): the cron starts and finishes it.
   await db.from("videos").update({ status: "approved", reviewed_by: created.userId, reviewed_at: new Date().toISOString(), publish_state: "queued", publish_requested_at: new Date().toISOString(), publish_requested_by: created.userId }).eq("id", D);

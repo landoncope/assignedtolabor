@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
+import { pictureWarning } from "@/lib/capture-meta";
 import { areaLabel, type Area, type PublishState, type VideoWithArea } from "@/lib/types";
 import { approveVideo, assignArea, deleteVideo, markPosted, postToInstagram, rejectVideo, reopenVideo } from "../actions";
 
@@ -24,6 +25,12 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
   const connected = Boolean(video.area?.instagram_user_id);
   const handle = (video.area?.instagram_handle ?? "").replace(/^@/, "");
   const inFlight = video.status !== "posted" && (publish.state === "queued" || publish.state === "processing");
+  // A frozen picture (the iPhone recordings of 2026-09-19): Instagram refuses the file, so
+  // there is no one-tap button, only the reason. The server refuses it too (fileProblem).
+  const frozen = video.capture_meta ? pictureWarning(video.capture_meta) : null;
+  const frozenNote = frozen && (
+    <p className="text-sm text-danger"><b>This recording can&rsquo;t be posted.</b> {frozen} Instagram refuses a file whose picture freezes, and viewers would see a still image. Mark it not selected so the person can record again.</p>
+  );
 
   // While Instagram processes the file, ask the server every few seconds; it publishes
   // the post the moment Instagram is ready (the cron does the same if this page is gone).
@@ -134,9 +141,10 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
 
       {video.status === "pending" && !inFlight && (
         <div className="card flex flex-col gap-3">
-          {connected && captionBox}
-          {connected && <button onClick={post} disabled={pending} className="btn-primary py-3">Approve and post to @{handle}</button>}
-          <button onClick={() => run(() => approveVideo(video.id))} disabled={pending} className={connected ? "btn-secondary" : "btn-primary py-3"}>{connected ? "Approve only, post later" : "Approve"}</button>
+          {frozenNote}
+          {connected && !frozen && captionBox}
+          {connected && !frozen && <button onClick={post} disabled={pending} className="btn-primary py-3">Approve and post to @{handle}</button>}
+          <button onClick={() => run(() => approveVideo(video.id))} disabled={pending} className={connected || frozen ? "btn-secondary" : "btn-primary py-3"}>{frozen ? "Approve anyway" : connected ? "Approve only, post later" : "Approve"}</button>
           <details>
             <summary className="cursor-pointer text-sm text-muted">Not selecting this one</summary>
             <textarea className="input mt-2 min-h-20" placeholder="Optional note for the uploader" value={note} onChange={(e) => setNote(e.target.value)} />
@@ -148,10 +156,11 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
       {video.status === "approved" && !inFlight && (
         <div className="card flex flex-col gap-3">
           <div className="font-semibold">Post it</div>
-          {publish.state === "failed" && publish.error && (
+          {frozenNote}
+          {publish.state === "failed" && publish.error && !frozen && (
             <p className="text-sm text-danger">Not posted: {publish.error}</p>
           )}
-          {connected ? (
+          {connected && !frozen ? (
             <>
               {captionBox}
               <button onClick={post} disabled={pending} className="btn-primary py-3">{publish.state === "failed" ? `Try again on @${handle}` : `Post to @${handle} now`}</button>
@@ -164,7 +173,7 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
             <>
               {captionBox}
               {manualPost}
-              {canConnect && video.area && (
+              {canConnect && video.area && !connected && (
                 <p className="text-xs text-muted">
                   To post with one tap next time, <a href={`/api/instagram/connect?area=${video.area.id}&back=${encodeURIComponent(`/review/${video.id}`)}`} className="text-accent underline">connect this team&rsquo;s Instagram account</a> while logged in to it in this browser.
                 </p>

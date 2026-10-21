@@ -53,6 +53,12 @@ unpublished. See "Instagram posting from the site" under Decisions and Account s
 draft, one-line summary; proven on a real clip, see "AI-suggested captions" under
 Decisions). The first real Connect attempts were stopped by Instagram because the
 team accounts are not yet testers of the Meta app; waiting on Travis for the usernames.
+**2026-10-20/21: four teams connected their Instagram accounts (English, Philippines,
+Slovak, Taiwan) and the English team posted the first real Reel from the site**
+(2026-10-21 09:38 UTC, a 66 s iPhone clip, https://www.instagram.com/reel/DewGfhWFAHl/).
+The Philippines lead's first one-tap post failed with a bare "ERROR" from Instagram:
+the video was one of the frozen 2026-09-19 recordings. Fixed the same day; see the
+2026-10-21 bullet under "Where we paused".
 
 ### Where we paused (2026-10-15: captions live, Connect waiting on tester invites)
 
@@ -154,6 +160,38 @@ Nothing is half-built. Pick up here.
   Instagram in a browser, tap Connect on /review or /admin, type the password, Allow);
   waiting for the first connection and the French acceptance. The working tree is on
   `main`; PR #5 lives on branch `mic-gain`.
+- **2026-10-21, the first real posts.** Travis and the leads connected English,
+  Philippines, Slovak and Taiwan on 2026-10-20 (rows in `instagram_accounts`, tokens
+  to 2026-12-19). The English team's one-tap post went through in about two minutes
+  (video e6f40f9e, 112 MB, 66 s, iPhone Chrome, `publish_attempts` 1). Brady's
+  Philippines post (video 7c56ea96, two attempts) came back "Instagram could not use
+  the file: ERROR": Instagram's container status was `ERROR` with the `status` field
+  also just "ERROR", no code. The file is one of the frozen event recordings
+  (2026-09-19, iPhone Safari 26.6.1, recorded in one piece before the slice fix): the
+  picture track has 283 frames and ends at 10.5 s, the sound runs to 83.9 s, the
+  last frame is held 73.4 s (ffprobe and `readPicture` agree), so Instagram's
+  transcoder refuses it. Not a fault in the posting. Those recordings predate the
+  on-device check, so the review page showed no warning and Brady could not know.
+  Done the same day: (1) `node scripts/dev/picture-backfill.mjs --write` read every
+  stored recording without a check (16, all from 2026-09-19) with the recorder's own
+  reader over HTTP ranges and stored the result as `capture_meta.picture` (marked
+  `audited`): 8 are frozen, 2 of them approved (7c56ea96 Philippines, 49cbbfff) and 6
+  pending; the review page now shows its red line on all 8. (2) A frozen recording
+  gets no one-tap button, a "This recording can't be posted" note instead, and the
+  server refuses it before asking Instagram (`fileProblem` reads `capture_meta`), on
+  the page, on Try again and in the cron. (3) A bare `ERROR` from Instagram is now
+  reported as "could not process this file and gave no reason" with the freeze hint.
+  (4) `mp4-tracks.ts` ignores a frame duration of 0xFFFFFFFF (a frame the writer never
+  closed; it had made the English uploader's first clip read as "freezes 13.4s in,
+  for 7158278.8s", 2^32/600; they retook it and the second clip was clean). (5) The
+  publish cron takes `?only=<video ids>&area=<team id>` and the flow check uses it,
+  because a local build reads the live database where real posts are now in flight
+  (43 checks pass). The Philippines video's `publish_error` was set by hand to the
+  frozen reason. Still to do by people: Brady (or an admin) marks 7c56ea96 not
+  selected; the other 7 frozen event videos should be marked not selected too (their
+  uploaders were emailed on 2026-09-20/21 to record again). While a local flow check
+  runs, production's caption cron transcribes the test's 4 s clips (a few seconds of
+  ElevenLabs time; harmless).
 
 ### After the 2026-09-19 event (do these, then delete this list)
 
@@ -497,7 +535,9 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     whose lead left the page, and refreshes tokens; `?dry=1` reports only. A failure
     (file refused, token invalid, etc.) leaves the video approved with the reason on
     the page, a "Try again" button and the manual download-and-paste flow underneath.
-    Pre-checks before asking Instagram: file present, at most 300 MB, 3 s to 15 min.
+    Pre-checks before asking Instagram: file present, at most 300 MB, 3 s to 15 min,
+    and (2026-10-21) no frozen picture in `capture_meta.picture`, which also removes
+    the one-tap button from the page.
     Without a connected account the review page shows the manual flow as before plus
     a link to connect.
   - Meta's callbacks: `POST /api/instagram/deauthorize` and `/api/instagram/data-deletion`
@@ -520,8 +560,11 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     refused before any request, a post queued but never started (the cron starts and
     finishes it), the account disconnected mid-post, a code Instagram rejects, stale
     and denied callbacks, token unreadable through the public API, deauthorize, data
-    deletion, disconnect; it also saves phone-width screenshots of the pending and
-    failed states to the optional third argument. All 41 passed on 2026-10-13.
+    deletion, disconnect, and (2026-10-21) a frozen-picture recording that gets no
+    one-tap button and is refused before any request; it also saves phone-width
+    screenshots of the pending, failed and frozen states to the optional third
+    argument. All 41 passed on 2026-10-13, all 43 on 2026-10-21. Its cron calls are
+    scoped to its own rows (see the cron above): real posts are in flight now.
     The mock takes `/__config?badcode=1` to hand back a bad code once.
     Against the real Instagram, two helpers: `node scripts/dev/instagram-live-test.mjs
     setup | status | cleanup` prepares the first real post THROUGH THE SITE on
@@ -967,6 +1010,13 @@ redirects to localhost and the sign-in cookie does not follow across hostnames.
     is how to find out whether a later iOS has fixed the bug. Audit stored files with
     `node scripts/dev/freeze-audit.mjs [since]` (ffprobe packet times, read-only) and
     local files with `node scripts/dev/mp4-tracks-check.mjs f.mp4`.
+    `node scripts/dev/picture-backfill.mjs [--write] [--all] [since]` (2026-10-21) reads
+    stored recordings with the recorder's own reader through HTTP range requests on a
+    signed URL (box headers only, a few reads per file) and with `--write` stores the
+    result as `capture_meta.picture` (with `audited` = the date) on recordings that
+    never had the device check; `--all` re-reads checked ones for comparison, never
+    overwriting. Run 2026-10-21: 16 unchecked, all from 2026-09-19, 8 frozen. The
+    reader ignores a frame duration of 0xFFFFFFFF (unclosed frame) since that day.
   - Two pipelines (2026-09-20). `canvas` is the default everywhere and is what the
     field has proven. `camera` (opt-in: `/upload?rec=camera`) hands MediaRecorder the
     camera's own stream when the frame is already a 9:16 portrait and any zoom is the

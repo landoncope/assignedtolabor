@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { pictureWarning, type CaptureMeta } from "@/lib/capture-meta";
 import * as ig from "@/lib/instagram";
 import type { PublishState, Script } from "@/lib/types";
 
@@ -27,8 +28,9 @@ type VideoRow = {
   duration_seconds: number | null; file_size: number | null; script: Script | null;
   publish_state: PublishState | null; publish_container_id: string | null; publish_requested_by: string | null;
   publish_attempts: number; post_caption: string | null; ai_caption: string | null; post_url: string | null; publish_error: string | null;
+  capture_meta: CaptureMeta | null;
 };
-const VIDEO_COLS = "id, area_id, status, storage_path, file_purged_at, duration_seconds, file_size, script, publish_state, publish_container_id, publish_requested_by, publish_attempts, post_caption, ai_caption, post_url, publish_error";
+const VIDEO_COLS = "id, area_id, status, storage_path, file_purged_at, duration_seconds, file_size, script, publish_state, publish_container_id, publish_requested_by, publish_attempts, post_caption, ai_caption, post_url, publish_error, capture_meta";
 
 type AccountRow = { area_id: string; ig_user_id: string; username: string | null; access_token: string; token_expires_at: string | null };
 
@@ -37,11 +39,16 @@ export function captionFor(script: Script | null): string {
 }
 
 /** Why Instagram would refuse this file, before we ask it. Null when it looks fine. */
-export function fileProblem(v: Pick<VideoRow, "storage_path" | "file_purged_at" | "duration_seconds" | "file_size">): string | null {
+export function fileProblem(v: Pick<VideoRow, "storage_path" | "file_purged_at" | "duration_seconds" | "file_size" | "capture_meta">): string | null {
   if (v.file_purged_at || !v.storage_path) return "The video file has already been deleted from our storage.";
   if (v.file_size && v.file_size > MAX_BYTES) return `The file is ${(v.file_size / 1048576).toFixed(0)} MB; Instagram takes Reels up to 300 MB.`;
   if (v.duration_seconds && v.duration_seconds < MIN_SECONDS) return "Instagram needs a Reel of at least 3 seconds.";
   if (v.duration_seconds && v.duration_seconds > MAX_SECONDS) return "Instagram takes Reels up to 15 minutes.";
+  // A frozen picture (the iPhone recordings of 2026-09-19): Instagram's processing ends in a
+  // bare "ERROR" (seen 2026-10-21 on the first Philippines post), and viewers would see a
+  // still image anyway.
+  const frozen = v.capture_meta ? pictureWarning(v.capture_meta) : null;
+  if (frozen) return `${frozen} Instagram refuses a file whose picture freezes, and viewers would see a still image. Ask the person to record again, or mark the video not selected.`;
   return null;
 }
 
@@ -112,15 +119,22 @@ export async function advancePublish(db: Db, videoId: string): Promise<PublishOu
       }).eq("id", v.id);
       return { state: "published", error: null, postUrl: permalink };
     }
-    return fail(db, v.id, s.detail ? `Instagram could not use the file: ${s.detail}` : `Instagram reported ${s.code}.`);
+    // Instagram's `status` carries a reason ("Error: Media upload has failed with error code
+    // 2207026") or, as on 2026-10-21 with a frozen-picture file, just "ERROR" again.
+    const reason = s.detail && s.detail !== s.code ? `Instagram could not use the file: ${s.detail}`
+      : `Instagram could not process this file and gave no reason (${s.code}). Check that the picture plays to the end: a recording whose picture freezes is refused.`;
+    return fail(db, v.id, reason);
   } catch (e) {
     return fail(db, v.id, ig.describeError(e));
   }
 }
 
 /** Cron: move every in-flight post along, so a lead who closed the page still gets it posted. */
-export async function sweepPublishing(db: Db, dry = false): Promise<{ id: string; before: PublishState; after: PublishOutcome | null }[]> {
-  const { data, error } = await db.from("videos").select("id, publish_state").in("publish_state", ["queued", "processing"]).order("publish_requested_at", { ascending: true }).limit(50);
+export async function sweepPublishing(db: Db, dry = false, only: string[] | null = null): Promise<{ id: string; before: PublishState; after: PublishOutcome | null }[]> {
+  if (only && only.length === 0) return [];
+  let q = db.from("videos").select("id, publish_state").in("publish_state", ["queued", "processing"]);
+  if (only) q = q.in("id", only);
+  const { data, error } = await q.order("publish_requested_at", { ascending: true }).limit(50);
   if (error) throw new Error(error.message);
   const out: { id: string; before: PublishState; after: PublishOutcome | null }[] = [];
   for (const row of (data ?? []) as { id: string; publish_state: PublishState }[]) {
@@ -130,10 +144,13 @@ export async function sweepPublishing(db: Db, dry = false): Promise<{ id: string
 }
 
 /** Cron: refresh long-lived tokens before they expire. A token must be a day old to be refreshable. */
-export async function refreshExpiringTokens(db: Db, dry = false): Promise<{ area_id: string; result: string }[]> {
+export async function refreshExpiringTokens(db: Db, dry = false, areas: string[] | null = null): Promise<{ area_id: string; result: string }[]> {
+  if (areas && areas.length === 0) return [];
   const soon = new Date(Date.now() + REFRESH_BEFORE_DAYS * 86400_000).toISOString();
   const dayAgo = new Date(Date.now() - 86400_000).toISOString();
-  const { data, error } = await db.from("instagram_accounts").select("area_id, access_token, token_expires_at, refreshed_at, connected_at").lt("token_expires_at", soon);
+  let q = db.from("instagram_accounts").select("area_id, access_token, token_expires_at, refreshed_at, connected_at").lt("token_expires_at", soon);
+  if (areas) q = q.in("area_id", areas);
+  const { data, error } = await q;
   if (error) throw new Error(error.message);
   const out: { area_id: string; result: string }[] = [];
   for (const a of (data ?? []) as { area_id: string; access_token: string; token_expires_at: string; refreshed_at: string | null; connected_at: string }[]) {

@@ -45,6 +45,11 @@ function child(v: DataView, start: number, end: number, type: string) {
   return null;
 }
 function addSample(t: Track, duration: number) {
+  // 0xFFFFFFFF is "unknown": the writer never closed this frame. Counting it would put the
+  // track's end 82 days out (seen 2026-10-21 on an iPhone clip: "freezes 13.4s in, for
+  // 7158278.8s"). Left out, the frame is held until the next fragment or the end of the
+  // sound, which the tfdt gap and the early-end rule below already measure.
+  if (duration === 0xffffffff) return;
   if (duration > t.hold) { t.hold = duration; t.holdAt = t.cursor; }
   t.cursor += duration;
 }
