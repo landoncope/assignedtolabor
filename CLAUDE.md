@@ -532,7 +532,10 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     `advancePublish` checks the container and, on FINISHED, calls `media_publish`, reads
     the permalink and sets `status = 'posted'`, `post_url`, `posted_by` = the lead who
     tapped. `/api/cron/publish` (every 2 minutes, `CRON_SECRET`) does the same for posts
-    whose lead left the page, and refreshes tokens; `?dry=1` reports only. A failure
+    whose lead left the page, and refreshes tokens; `?dry=1` reports only;
+    `?only=<video ids>&area=<team id>` (2026-10-21) scopes a run to those rows, for
+    tests on a local build, which reads the live database (either parameter makes
+    the run scoped, and a missing one then means none). A failure
     (file refused, token invalid, etc.) leaves the video approved with the reason on
     the page, a "Try again" button and the manual download-and-paste flow underneath.
     Pre-checks before asking Instagram: file present, at most 300 MB, 3 s to 15 min,
