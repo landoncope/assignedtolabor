@@ -395,7 +395,13 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
   The old project is an orphan: it still holds Travis's secrets (Anthropic key, Meta
   app id/secret, the old Supabase service-role key) and possibly a cron. Claude did
   not touch it; deleting it is Landon's/Travis's call once the new project has what
-  it needs.
+  it needs. **2026-10-28:** theholyrebellion.org/wagepeace/login (the prototype's
+  login box, still its own email/password form) was still sending people to the old
+  dashboard. Travis asked for a prompt for HIS Claude Code session; Landon sent one
+  that redirects /wagepeace/login to https://assignedtolabor.org/login (next.config
+  redirect, nav links, middleware's unauthenticated bounce) and leaves the rest of
+  the prototype alone. Once he runs it, sign-ins arrive at our /login from that site
+  and the TestFlight shell (server.url = that login page) lands on our site too.
 - **Data:** Supabase project `wagepeace`, ref `rmiwnhvabqhhcsixyvao`, us-west-2, PG17.
   Postgres + Auth (email/password, Google OAuth, anonymous sign-ins) + Storage (private
   `videos` bucket served via signed URLs, public `avatars` bucket). Schema was applied
