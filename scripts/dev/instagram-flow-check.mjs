@@ -61,6 +61,7 @@ try {
     { hook: "Hook six", body: "File already purged.", cta: null },
     { hook: "Hook seven", body: "Disconnected while in flight.", cta: null },
     { hook: "Hook eight", body: "Picture froze 10 s in (a 2026-09-19 iPhone file).", cta: null },
+    { hook: "Hook nine", body: "Instagram rejects the token at post time.", cta: null },
   ];
   for (let i = 0; i < scripts.length; i++) {
     const path = `${created.userId}/mock-${ts}-${i}.mp4`;
@@ -71,7 +72,7 @@ try {
     if (vErr) throw new Error(vErr.message);
     created.videoIds.push(v.id);
   }
-  const [A, B, C, D, E, F, G, H] = created.videoIds;
+  const [A, B, C, D, E, F, G, H, I] = created.videoIds;
   await db.from("videos").update({ file_size: 400 * 1048576 }).eq("id", E);
   await db.from("videos").update({ storage_path: null, file_purged_at: new Date().toISOString() }).eq("id", F);
   // H looks like one of the frozen event recordings after scripts/dev/picture-backfill.mjs stored its check.
@@ -239,6 +240,22 @@ try {
   await page.locator("#instagram li", { hasText: "Instagram Mock Team" }).getByRole("link", { name: "Connect Instagram" }).click();
   await page.waitForURL(/instagram_connected=/, { timeout: 20_000 });
   check("reconnected after the failure", !!(await db.from("instagram_accounts").select("area_id").eq("area_id", created.areaId).maybeSingle()).data);
+
+  // Instagram rejects the stored token at post time (code 190: the account's password changed
+  // or Instagram ended the session; the English team, 2026-10-27): the post fails with
+  // "connect again", the dead connection is forgotten, and the page offers Connect.
+  await fetch(`${mock}/__config?deadtoken=1`);
+  await page.goto(`${base}/review/${I}`);
+  await page.getByRole("button", { name: /Approve and post to @atl_mock_team/ }).click();
+  await page.getByText("Not posted:").waitFor({ timeout: 20_000 });
+  const vI = await video(I, "status, publish_state, publish_error");
+  await page.goto(`${base}/review/${I}`);
+  const bodyI = await page.textContent("body");
+  check("a rejected token fails the post, says to connect again, and forgets the connection", vI?.status === "approved" && vI.publish_state === "failed" && /no longer accepts our connection to @atl_mock_team/.test(vI.publish_error ?? "") && /Connect the account again/.test(vI.publish_error ?? "") && !(await db.from("instagram_accounts").select("area_id").eq("area_id", created.areaId).maybeSingle()).data && (await db.from("areas").select("instagram_user_id").eq("id", created.areaId).single()).data?.instagram_user_id === null && bodyI.includes("connect this team"), vI?.publish_error ?? "");
+  await page.goto(`${base}/review`);
+  await page.locator("#instagram li", { hasText: "Instagram Mock Team" }).getByRole("link", { name: "Connect Instagram" }).click();
+  await page.waitForURL(/instagram_connected=/, { timeout: 20_000 });
+  check("reconnected after the rejected token", !!(await db.from("instagram_accounts").select("area_id").eq("area_id", created.areaId).maybeSingle()).data);
 
   // Callback hygiene.
   await page.goto(`${base}/api/instagram/callback?code=x&state=bad`);

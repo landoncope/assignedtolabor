@@ -192,6 +192,21 @@ Nothing is half-built. Pick up here.
   uploaders were emailed on 2026-09-20/21 to record again). While a local flow check
   runs, production's caption cron transcribes the test's 4 s clips (a few seconds of
   ElevenLabs time; harmless).
+- **2026-10-28, a dead token.** The English team posted one Reel a day from 10-21 to
+  10-26 (six, all one tap, `publish_attempts` 1). On 10-27 and 10-28 its posts failed
+  with Instagram's "Error validating access token: The session has been invalidated
+  because the user changed their password or Facebook has changed the session for
+  security reasons (OAuthException code 190/0)": the stored token is dead (the lead
+  changed the password, or Instagram reset the session), and "Try again" could never
+  work. Fix the same day (45 checks): a code 190 at post time, at status time or at
+  the refresh forgets the connection like a deauthorize (`forgetRejected` in
+  `instagram-publish.ts`) and the page says "Instagram no longer accepts our
+  connection to @…, connect the account again"; the Connect link is back on the
+  review page and the team row. The lead reconnects on /review (Instagram accounts:
+  Connect Instagram while logged in to @seek_this_jesus_, password, Allow) and taps
+  Try again on the two videos (45f96777, 2bdc8532). Landon told Travis. If this
+  recurs without a password change, Instagram is resetting the session itself
+  (a security checkpoint on a new account posting daily), and the fix is the same.
 
 ### After the 2026-09-19 event (do these, then delete this list)
 
@@ -542,8 +557,11 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     `?only=<video ids>&area=<team id>` (2026-10-21) scopes a run to those rows, for
     tests on a local build, which reads the live database (either parameter makes
     the run scoped, and a missing one then means none). A failure
-    (file refused, token invalid, etc.) leaves the video approved with the reason on
+    (file refused, etc.) leaves the video approved with the reason on
     the page, a "Try again" button and the manual download-and-paste flow underneath.
+    A token Instagram rejects (OAuthException code 190, since 2026-10-28) instead
+    forgets the connection like a deauthorize and says to connect the account again,
+    because no retry can succeed; the same at the cron's refresh.
     Pre-checks before asking Instagram: file present, at most 300 MB, 3 s to 15 min,
     and (2026-10-21) no frozen picture in `capture_meta.picture`, which also removes
     the one-tap button from the page.
@@ -572,9 +590,12 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     deletion, disconnect, and (2026-10-21) a frozen-picture recording that gets no
     one-tap button and is refused before any request; it also saves phone-width
     screenshots of the pending, failed and frozen states to the optional third
-    argument. All 41 passed on 2026-10-13, all 43 on 2026-10-21. Its cron calls are
-    scoped to its own rows (see the cron above): real posts are in flight now.
-    The mock takes `/__config?badcode=1` to hand back a bad code once.
+    argument; and (2026-10-28) a token Instagram rejects at post time, which fails
+    the post with "connect again", forgets the connection and brings Connect back.
+    All 41 passed on 2026-10-13, 43 on 2026-10-21, 45 on 2026-10-28. Its cron calls
+    are scoped to its own rows (see the cron above): real posts are in flight now.
+    The mock takes `/__config?badcode=1` to hand back a bad code once and
+    `/__config?deadtoken=1` to reject the token (code 190) on the next Graph call.
     Against the real Instagram, two helpers: `node scripts/dev/instagram-live-test.mjs
     setup | status | cleanup` prepares the first real post THROUGH THE SITE on
     production (an active "Instagram test" / Klingon team, a pending synthetic 6 s

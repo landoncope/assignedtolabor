@@ -30,8 +30,10 @@ createServer(async (req, res) => {
   log(req.method, url.pathname);
 
   if (p === "/__state") return json(res, 200, { ...state, containers: [...state.containers.values()], media: [...state.media.values()] });
-  // Test switches: /__config?badcode=1 makes the next login hand back a code the token exchange rejects.
-  if (p === "/__config") { state.badcode = params.badcode === "1"; return json(res, 200, { badcode: state.badcode }); }
+  // Test switches: /__config?badcode=1 makes the next login hand back a code the token exchange
+  // rejects; ?deadtoken=1 makes the next Graph call reject the token (code 190, the session
+  // invalidated because the password changed, as the real Instagram did on 2026-10-27).
+  if (p === "/__config") { state.badcode = params.badcode === "1"; state.deadtoken = params.deadtoken === "1"; return json(res, 200, { badcode: state.badcode, deadtoken: state.deadtoken }); }
 
   // Login dialog: send the browser straight back with a code (or an error with ?deny=1).
   if (p === "/oauth/authorize") {
@@ -58,6 +60,7 @@ createServer(async (req, res) => {
   // Graph API: everything below needs a token.
   const token = params.access_token ?? body.access_token;
   if (!validToken(token)) return oauthError(res, 400, "Invalid OAuth access token - Cannot parse access token", 190);
+  if (state.deadtoken) { state.deadtoken = false; return json(res, 400, { error: { message: "Error validating access token: The session has been invalidated because the user changed their password or Facebook has changed the session for security reasons.", type: "OAuthException", code: 190, error_subcode: 0 } }); }
 
   if (p === "/me" && req.method === "GET") return json(res, 200, { id: APP_SCOPED_ID, user_id: IG_USER_ID, username: "atl_mock_team", account_type: "BUSINESS", name: "Mock Team" });
   if ((p === "/me/media" || p === `/${IG_USER_ID}/media`) && req.method === "POST") {

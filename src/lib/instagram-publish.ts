@@ -73,6 +73,21 @@ function current(v: VideoRow): PublishOutcome {
   return { state: v.publish_state, error: v.publish_error, postUrl: v.post_url };
 }
 
+/**
+ * Instagram no longer accepts the stored token (OAuthException code 190: "the session has
+ * been invalidated because the user changed their password or Facebook has changed the
+ * session for security reasons", seen 2026-10-27 on the English team after six daily
+ * posts). A retry can never succeed, so the connection is forgotten like a deauthorize
+ * and the page shows Connect again.
+ */
+function tokenRejected(e: unknown): boolean {
+  return e instanceof ig.InstagramError && e.code === 190;
+}
+async function forgetRejected(db: Db, areaId: string, username: string | null): Promise<string> {
+  await removeConnection(db, { areaId });
+  return `Instagram no longer accepts our connection to @${(username ?? "").replace(/^@/, "") || "the team's account"} (it says the account's password changed or it ended the session for security reasons). Connect the account again from this page, logged in to it, then post.`;
+}
+
 /** Create the Reel container for a queued video. Fast: one request to Instagram. */
 export async function startPublish(db: Db, videoId: string): Promise<PublishOutcome> {
   const v = await loadVideo(db, videoId);
@@ -95,6 +110,7 @@ export async function startPublish(db: Db, videoId: string): Promise<PublishOutc
     }).eq("id", v.id);
     return { state: "processing", error: null, postUrl: null };
   } catch (e) {
+    if (tokenRejected(e)) return fail(db, v.id, await forgetRejected(db, v.area_id, acct.username));
     return fail(db, v.id, ig.describeError(e));
   }
 }
@@ -125,6 +141,7 @@ export async function advancePublish(db: Db, videoId: string): Promise<PublishOu
       : `Instagram could not process this file and gave no reason (${s.code}). Check that the picture plays to the end: a recording whose picture freezes is refused.`;
     return fail(db, v.id, reason);
   } catch (e) {
+    if (tokenRejected(e) && v.area_id) return fail(db, v.id, await forgetRejected(db, v.area_id, acct.username));
     return fail(db, v.id, ig.describeError(e));
   }
 }
@@ -162,6 +179,11 @@ export async function refreshExpiringTokens(db: Db, dry = false, areas: string[]
       out.push({ area_id: a.area_id, result: `refreshed until ${t.expiresAt.toISOString().slice(0, 10)}` });
     } catch (e) {
       const msg = ig.describeError(e);
+      if (tokenRejected(e)) {
+        await removeConnection(db, { areaId: a.area_id });
+        out.push({ area_id: a.area_id, result: `token rejected (${msg}): connection forgotten, the lead must connect again` });
+        continue;
+      }
       await db.from("instagram_accounts").update({ last_error: `refresh failed: ${msg}`, updated_at: new Date().toISOString() }).eq("area_id", a.area_id);
       out.push({ area_id: a.area_id, result: `refresh failed: ${msg}` });
     }
