@@ -809,7 +809,10 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     for three scopes; a team grants it the next time its lead connects (connections
     made before keep working without it, and the card shows followers, posts, likes
     and comments until then). The order mattered: the variable before the permission
-    would have made Instagram refuse every login.
+    would have made Instagram refuse every login. Checked live 2026-10-30 after the
+    deploy: the Slovak team's Connect link, opened in Landon's signed-in Chrome,
+    reached Instagram's consent page ("continue sharing information about
+    landon_cope") with no scope error; the tab was closed there, nothing allowed.
   - **Tests:** `scripts/dev/dashboard-sql-check.sh` (23 rolled-back checks: the goal
     columns and trigger, who gets `team_goal_report` and `team_overview` rows, the
     phone number's visibility, `instagram_stats` unreadable); the Instagram flow check
