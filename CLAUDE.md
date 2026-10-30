@@ -62,7 +62,7 @@ the video was one of the frozen 2026-09-19 recordings. Fixed the same day; see t
 2026-10-27, when Instagram invalidated its token (code 190); handled 2026-10-28.
 **2026-10-30: the dashboard** (Travis's next body of work: team Instagram numbers on
 sign-in, an upload goal with reminder emails and a countdown, the lead's view of every
-member with email/text/remind) was built on branch `dashboard-goals` (PR #PRNUM); see
+member with email/text/remind) was built on branch `dashboard-goals` (PR #6); see
 "Dashboard" under Decisions. The same day a privilege hole was closed on production:
 any account could have made itself admin with one profile update (`guard_profile_update`).
 
@@ -222,7 +222,7 @@ Nothing is half-built. Pick up here.
   Security: `update profiles set role = 'admin'` worked for any signed-in account
   (RLS update policy covered every column); proven in a rolled-back transaction,
   fixed with a trigger and pushed to main and production within the hour (b089f74).
-  The dashboard shipped as PR #PRNUM: see "Dashboard" under Decisions for what it does,
+  The dashboard shipped as PR #6: see "Dashboard" under Decisions for what it does,
   the Meta-app step that unlocks reach and views (`INSTAGRAM_INSIGHTS`), and the open
   wording question (the nav tab still says "My videos"; Travis asked for the tabs to
   stay as they are).
@@ -713,7 +713,7 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     sweep unrestricted, which captioned five real approved videos with the mock's fake
     transcript; they were reset by hand within the minute, before anything was
     deployed or seen.** Never call a sweep route bare from a local test.
-- **Dashboard (2026-10-30, Travis's request, built the same day; PR #PRNUM).** `/my`,
+- **Dashboard (2026-10-30, Travis's request, built the same day; PR #6).** `/my`,
   where sign-in lands, is now the dashboard (heading "Dashboard"; the nav tab keeps
   its "My videos" label because Travis asked for the tabs to stay exactly as they
   are; renaming it is one word in `Nav.tsx` if he wants). Anonymous sessions still get
