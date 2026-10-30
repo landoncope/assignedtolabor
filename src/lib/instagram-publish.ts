@@ -77,15 +77,52 @@ function current(v: VideoRow): PublishOutcome {
  * Instagram no longer accepts the stored token (OAuthException code 190: "the session has
  * been invalidated because the user changed their password or Facebook has changed the
  * session for security reasons", seen 2026-10-27 on the English team after six daily
- * posts). A retry can never succeed, so the connection is forgotten like a deauthorize
- * and the page shows Connect again.
+ * posts, and on 2026-10-30 on all four connected teams at once). A retry can never
+ * succeed, so the connection is forgotten like a deauthorize, the loss is written on the
+ * team row (the notify sweep emails the leads once) and the pages show Connect again.
  */
 export function tokenRejected(e: unknown): boolean {
   return e instanceof ig.InstagramError && e.code === 190;
 }
 export async function forgetRejected(db: Db, areaId: string, username: string | null): Promise<string> {
-  await removeConnection(db, { areaId });
-  return `Instagram no longer accepts our connection to @${(username ?? "").replace(/^@/, "") || "the team's account"} (it says the account's password changed or it ended the session for security reasons). Connect the account again from this page, logged in to it, then post.`;
+  const reason = `Instagram no longer accepts our connection to @${(username ?? "").replace(/^@/, "") || "the team's account"} (it says the account's password changed or it ended the session for security reasons). Connect the account again under Instagram accounts on the Review page, logged in to it.`;
+  await removeConnection(db, { areaId }, reason);
+  return reason;
+}
+
+/**
+ * Cron: probe each connection once a day with one /me call, so a dead token is found
+ * the day it dies rather than when a lead taps Post. Connections and probes younger
+ * than a day are skipped (a test build's mock connection lives for minutes, and
+ * production must never send its token to the real Instagram). A rejected token is
+ * forgotten; any other error is noted on the row and tried again the next day.
+ */
+export async function checkConnections(db: Db, dry = false, areas: string[] | null = null, max = 5): Promise<{ area_id: string; result: string }[]> {
+  if (areas && areas.length === 0) return [];
+  const dayAgo = new Date(Date.now() - 86400_000).toISOString();
+  let q = db.from("instagram_accounts").select("area_id, username, access_token, checked_at").lt("connected_at", dayAgo).or(`checked_at.is.null,checked_at.lt.${dayAgo}`);
+  if (areas) q = q.in("area_id", areas);
+  const { data, error } = await q.order("checked_at", { ascending: true, nullsFirst: true }).limit(max);
+  if (error) throw new Error(error.message);
+  const out: { area_id: string; result: string }[] = [];
+  for (const a of (data ?? []) as { area_id: string; username: string | null; access_token: string }[]) {
+    if (dry) { out.push({ area_id: a.area_id, result: "would probe" }); continue; }
+    try {
+      const me = await ig.me(a.access_token);
+      await db.from("instagram_accounts").update({ checked_at: new Date().toISOString(), last_error: null, updated_at: new Date().toISOString() }).eq("area_id", a.area_id);
+      out.push({ area_id: a.area_id, result: `ok (@${me.username ?? "?"})` });
+    } catch (e) {
+      const msg = ig.describeError(e);
+      if (tokenRejected(e)) {
+        await forgetRejected(db, a.area_id, a.username);
+        out.push({ area_id: a.area_id, result: `token rejected (${msg}): connection forgotten, the leads will be told` });
+        continue;
+      }
+      await db.from("instagram_accounts").update({ checked_at: new Date().toISOString(), last_error: `probe failed: ${msg}`, updated_at: new Date().toISOString() }).eq("area_id", a.area_id);
+      out.push({ area_id: a.area_id, result: `probe failed: ${msg}` });
+    }
+  }
+  return out;
 }
 
 /** Create the Reel container for a queued video. Fast: one request to Instagram. */
@@ -165,12 +202,12 @@ export async function refreshExpiringTokens(db: Db, dry = false, areas: string[]
   if (areas && areas.length === 0) return [];
   const soon = new Date(Date.now() + REFRESH_BEFORE_DAYS * 86400_000).toISOString();
   const dayAgo = new Date(Date.now() - 86400_000).toISOString();
-  let q = db.from("instagram_accounts").select("area_id, access_token, token_expires_at, refreshed_at, connected_at").lt("token_expires_at", soon);
+  let q = db.from("instagram_accounts").select("area_id, username, access_token, token_expires_at, refreshed_at, connected_at").lt("token_expires_at", soon);
   if (areas) q = q.in("area_id", areas);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
   const out: { area_id: string; result: string }[] = [];
-  for (const a of (data ?? []) as { area_id: string; access_token: string; token_expires_at: string; refreshed_at: string | null; connected_at: string }[]) {
+  for (const a of (data ?? []) as { area_id: string; username: string | null; access_token: string; token_expires_at: string; refreshed_at: string | null; connected_at: string }[]) {
     if ((a.refreshed_at ?? a.connected_at) > dayAgo) { out.push({ area_id: a.area_id, result: "too new to refresh" }); continue; }
     if (dry) { out.push({ area_id: a.area_id, result: "would refresh" }); continue; }
     try {
@@ -180,8 +217,8 @@ export async function refreshExpiringTokens(db: Db, dry = false, areas: string[]
     } catch (e) {
       const msg = ig.describeError(e);
       if (tokenRejected(e)) {
-        await removeConnection(db, { areaId: a.area_id });
-        out.push({ area_id: a.area_id, result: `token rejected (${msg}): connection forgotten, the lead must connect again` });
+        await forgetRejected(db, a.area_id, a.username);
+        out.push({ area_id: a.area_id, result: `token rejected (${msg}): connection forgotten, the leads will be told` });
         continue;
       }
       await db.from("instagram_accounts").update({ last_error: `refresh failed: ${msg}`, updated_at: new Date().toISOString() }).eq("area_id", a.area_id);
@@ -199,18 +236,29 @@ export async function saveConnection(db: Db, areaId: string, userId: string, pro
     access_token: token.accessToken, token_expires_at: token.expiresAt.toISOString(), scopes, connected_by: userId, connected_at: now, refreshed_at: null, last_error: null, updated_at: now,
   }, { onConflict: "area_id" });
   if (error) throw new Error(error.message);
-  const { error: aErr } = await db.from("areas").update({ instagram_user_id: profile.userId, instagram_connected_at: now, ...(profile.username ? { instagram_handle: profile.username } : {}) }).eq("id", areaId);
+  const { error: aErr } = await db.from("areas").update({
+    instagram_user_id: profile.userId, instagram_connected_at: now, ...(profile.username ? { instagram_handle: profile.username } : {}),
+    instagram_lost_at: null, instagram_lost_reason: null, instagram_lost_notified_at: null,
+  }).eq("id", areaId);
   if (aErr) throw new Error(aErr.message);
 }
 
-/** Forget the token (disconnect, deauthorize, or a deletion request). The handle stays as plain text. */
-export async function removeConnection(db: Db, where: { areaId: string } | { igUserId: string }): Promise<string[]> {
+/**
+ * Forget the token (disconnect, deauthorize, a deletion request, or `lost`: Instagram
+ * rejected it, with the reason to show and to email the leads). The handle stays as plain text.
+ */
+export async function removeConnection(db: Db, where: { areaId: string } | { igUserId: string }, lost?: string): Promise<string[]> {
   // Meta names the account by one of its two ids depending on the callback; match either.
   if ("igUserId" in where && !/^\d{1,40}$/.test(where.igUserId)) throw new Error("Not an Instagram user id");
   const q = db.from("instagram_accounts").delete().select("area_id");
   const { data, error } = "areaId" in where ? await q.eq("area_id", where.areaId) : await q.or(`ig_user_id.eq.${where.igUserId},app_scoped_id.eq.${where.igUserId}`);
   if (error) throw new Error(error.message);
   const areaIds = ((data ?? []) as { area_id: string }[]).map((r) => r.area_id);
-  if (areaIds.length) await db.from("areas").update({ instagram_user_id: null, instagram_connected_at: null }).in("id", areaIds);
+  if (areaIds.length) {
+    await db.from("areas").update({
+      instagram_user_id: null, instagram_connected_at: null,
+      ...(lost ? { instagram_lost_at: new Date().toISOString(), instagram_lost_reason: lost, instagram_lost_notified_at: null } : {}),
+    }).in("id", areaIds);
+  }
   return areaIds;
 }

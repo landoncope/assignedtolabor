@@ -29,6 +29,9 @@ export default function InstagramConnections({ areas, back, notice }: { areas: A
               {a.instagram_user_id
                 ? <> · connected as <b>@{(a.instagram_handle ?? "").replace(/^@/, "")}</b>{a.instagram_connected_at ? ` since ${new Date(a.instagram_connected_at).toLocaleDateString()}` : ""}</>
                 : <> · not connected{a.instagram_handle ? ` (handle on file: @${a.instagram_handle.replace(/^@/, "")})` : ""}</>}
+              {!a.instagram_user_id && a.instagram_lost_at && (
+                <span className="block text-xs text-danger">Instagram ended the connection on {new Date(a.instagram_lost_at).toLocaleDateString()}: {a.instagram_lost_reason}</span>
+              )}
             </span>
             {a.instagram_user_id ? (
               confirm === a.id ? (

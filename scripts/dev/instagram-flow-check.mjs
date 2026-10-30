@@ -217,13 +217,39 @@ try {
 
   // Token refresh: a token close to expiry and old enough is refreshed by the cron.
   const before = (await db.from("instagram_accounts").select("access_token").eq("area_id", created.areaId).single()).data?.access_token;
-  await db.from("instagram_accounts").update({ token_expires_at: new Date(Date.now() + 5 * 86400_000).toISOString(), connected_at: new Date(Date.now() - 2 * 86400_000).toISOString(), refreshed_at: null }).eq("area_id", created.areaId);
+  // checked_at = now keeps production's daily probe (real Instagram) away from this mock token while connected_at is backdated.
+  await db.from("instagram_accounts").update({ token_expires_at: new Date(Date.now() + 5 * 86400_000).toISOString(), connected_at: new Date(Date.now() - 2 * 86400_000).toISOString(), refreshed_at: null, checked_at: new Date().toISOString() }).eq("area_id", created.areaId);
   const runR = await cron();
   const afterR = (await db.from("instagram_accounts").select("access_token, token_expires_at, refreshed_at, last_error").eq("area_id", created.areaId).single()).data;
   const daysLeft = afterR ? (new Date(afterR.token_expires_at) - Date.now()) / 86400_000 : 0;
   check("cron refreshes a token near expiry", /^refreshed until/.test(runR.tokens?.[0]?.result ?? "") && afterR?.access_token !== before && daysLeft > 58 && !!afterR.refreshed_at && !afterR.last_error, JSON.stringify({ tokens: runR.tokens, daysLeft: Math.round(daysLeft) }));
   const runR2 = await cron();
   check("a fresh token is left alone", (runR2.tokens ?? []).length === 0, JSON.stringify(runR2.tokens));
+
+  // The daily probe of each connection (2026-10-30, after all four real tokens were found
+  // dead): a connection probed within the day is skipped; a healthy one is noted; a
+  // rejected token is forgotten, the loss written on the team, the leads (admins here,
+  // the team has none) told once, and Connect clears the loss.
+  check("a connection probed within the day is left alone", (runR2.connections ?? []).length === 0, JSON.stringify(runR2.connections));
+  await db.from("instagram_accounts").update({ checked_at: new Date(Date.now() - 2 * 86400_000).toISOString() }).eq("area_id", created.areaId);
+  const runP1 = await cron();
+  check("the probe finds a healthy connection and notes the check", /^ok/.test(runP1.connections?.[0]?.result ?? "") && Date.now() - new Date((await db.from("instagram_accounts").select("checked_at").eq("area_id", created.areaId).single()).data?.checked_at ?? 0).getTime() < 60_000, JSON.stringify(runP1.connections));
+  await db.from("instagram_accounts").update({ checked_at: new Date(Date.now() - 2 * 86400_000).toISOString() }).eq("area_id", created.areaId);
+  await fetch(`${mock}/__config?deadtoken=1`);
+  const runP2 = await cron();
+  const lostArea = (await db.from("areas").select("instagram_user_id, instagram_lost_at, instagram_lost_reason, instagram_lost_notified_at").eq("id", created.areaId).single()).data;
+  check("the probe forgets a rejected token and records why on the team", /rejected/.test(runP2.connections?.[0]?.result ?? "") && !(await db.from("instagram_accounts").select("area_id").eq("area_id", created.areaId).maybeSingle()).data && lostArea?.instagram_user_id === null && !!lostArea.instagram_lost_at && /no longer accepts our connection to @atl_mock_team/.test(lostArea.instagram_lost_reason ?? "") && !lostArea.instagram_lost_notified_at, JSON.stringify({ run: runP2.connections, lostArea }));
+  const planL = await (await fetch(`${base}/api/cron/notify?dry=1`, { headers: { authorization: `Bearer ${env.CRON_SECRET}` } })).json();
+  // Marked told at once: production's own sweep must not email the real admins about the mock team.
+  await db.from("areas").update({ instagram_lost_notified_at: new Date().toISOString() }).eq("id", created.areaId);
+  check("the notify sweep plans to tell the team to connect again", planL.plan?.some((p) => p.kind === "instagram_lost" && p.to === email && /Instagram disconnected the Instagram Mock Team/.test(p.subject)), JSON.stringify((planL.plan ?? []).filter((p) => p.kind === "instagram_lost" && p.to === email)));
+  await page.goto(`${base}/review`);
+  const lostRow = page.locator("#instagram li", { hasText: "Instagram Mock Team" });
+  check("the Review page shows why the connection ended", /Instagram ended the connection on/.test(await lostRow.textContent()));
+  await lostRow.getByRole("link", { name: "Connect Instagram" }).click();
+  await page.waitForURL(/instagram_connected=/, { timeout: 20_000 });
+  const relinked = (await db.from("areas").select("instagram_lost_at, instagram_lost_reason, instagram_lost_notified_at").eq("id", created.areaId).single()).data;
+  check("connecting again clears the loss", !!(await db.from("instagram_accounts").select("area_id").eq("area_id", created.areaId).maybeSingle()).data && relinked?.instagram_lost_at === null && relinked.instagram_lost_reason === null && relinked.instagram_lost_notified_at === null, JSON.stringify(relinked));
 
   // A signed-in member who leads nothing cannot read the publish status.
   const email2 = `ig-check-member-${ts}@example.com`;

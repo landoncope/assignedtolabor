@@ -24,6 +24,10 @@ export type Area = {
   /** Set while the team's Instagram account is connected for posting (the token itself is never readable here). */
   instagram_user_id: string | null;
   instagram_connected_at: string | null;
+  /** Instagram rejected the token and the connection was forgotten (2026-10-30); cleared by the next Connect. */
+  instagram_lost_at: string | null;
+  instagram_lost_reason: string | null;
+  instagram_lost_notified_at: string | null;
   is_active: boolean;
   sort_order: number;
   created_at: string;
@@ -81,9 +85,9 @@ export type Video = {
 export type PublishState = "queued" | "processing" | "published" | "failed";
 export type CaptionState = "done" | "failed" | "skipped";
 
-export type AreaSummary = Pick<Area, "id" | "name" | "language" | "instagram_handle" | "instagram_user_id" | "instagram_connected_at">;
+export type AreaSummary = Pick<Area, "id" | "name" | "language" | "instagram_handle" | "instagram_user_id" | "instagram_connected_at" | "instagram_lost_at" | "instagram_lost_reason">;
 /** The columns a page selects for a video's team. */
-export const AREA_SUMMARY_COLS = "id, name, language, instagram_handle, instagram_user_id, instagram_connected_at";
+export const AREA_SUMMARY_COLS = "id, name, language, instagram_handle, instagram_user_id, instagram_connected_at, instagram_lost_at, instagram_lost_reason";
 export type VideoWithArea = Video & { area: AreaSummary | null };
 
 export type ApplicationKind = "start" | "join";

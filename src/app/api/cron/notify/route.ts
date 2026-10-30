@@ -17,6 +17,8 @@ import { areaLabel } from "@/lib/types";
  *     application itself, not here.)
  *  6. Upload goals (2026-10-30): a reminder shortly before the next video is due, one
  *     per due date; the due date moves with every upload (src/lib/goals.ts).
+ *  7. A team whose Instagram token was rejected (2026-10-30): its leads (admins when it
+ *     has none) are told once to connect again.
  * Paragraphs are HTML, so everything a person typed goes through escapeHtml (`esc`).
  * Each item is marked as notified only after its email is accepted by Resend, so a
  * failed send is retried on the next run. `?dry=1` returns the plan without sending.
@@ -316,6 +318,38 @@ export async function GET(request: NextRequest) {
         cta: { label: "Record a video", href: `${siteUrl}/upload` },
         footer: FOOTER_GOAL,
       }, {}, async () => { await db.from("profiles").update({ goal_reminded_for: due.toISOString() }).eq("id", p.id); });
+    }
+  }
+
+  // 9. Instagram connections Instagram has rejected: tell the team's leads once.
+  const { data: lostRows } = await db
+    .from("areas")
+    .select("id, name, language, instagram_handle, instagram_lost_at, instagram_lost_reason")
+    .not("instagram_lost_at", "is", null)
+    .is("instagram_lost_notified_at", null)
+    .is("instagram_user_id", null);
+  type Lost = { id: string; name: string; language: string; instagram_handle: string | null; instagram_lost_at: string; instagram_lost_reason: string | null };
+  for (const a of (lostRows ?? []) as Lost[]) {
+    const mark = async () => { await db.from("areas").update({ instagram_lost_notified_at: new Date().toISOString() }).eq("id", a.id); };
+    const { data: mgrs } = await db.from("area_managers").select("profile:profiles(id, email)").eq("area_id", a.id);
+    let recipients = ((mgrs ?? []) as unknown as { profile: Person | null }[]).map((m) => m.profile).filter((p): p is Person => !!p?.email);
+    if (recipients.length === 0) recipients = admins;
+    if (recipients.length === 0) { if (!dry) await mark(); continue; }
+    const team = areaLabel(a);
+    const handle = (a.instagram_handle ?? "").replace(/^@/, "");
+    let sent = 0;
+    for (const p of recipients) {
+      await deliver("instagram_lost", {
+        to: p.email!,
+        subject: `Instagram disconnected the ${team} account`,
+        heading: `Instagram disconnected the ${team} account`,
+        paragraphs: [
+          `On ${esc(new Date(a.instagram_lost_at).toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" }))} Instagram stopped accepting our connection to ${handle ? `<b>@${esc(handle)}</b>` : "the team's account"}. ${esc(a.instagram_lost_reason ?? "")}`,
+          "Until it is connected again, one-tap posting is off for this team and the dashboard cannot show the account's numbers. Nothing already posted is affected.",
+          `To reconnect: log in to ${handle ? `@${esc(handle)}` : "the team's Instagram account"} in a browser, open the Review page and tap Connect Instagram under Instagram accounts (Instagram asks for the account's password, then Allow).`,
+        ],
+        cta: { label: "Open the Review page", href: `${siteUrl}/review#instagram` },
+      }, { area_id: a.id }, async () => { sent += 1; if (sent === recipients.length) await mark(); });
     }
   }
 

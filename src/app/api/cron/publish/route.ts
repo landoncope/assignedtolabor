@@ -1,10 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { refreshExpiringTokens, sweepPublishing } from "@/lib/instagram-publish";
+import { checkConnections, refreshExpiringTokens, sweepPublishing } from "@/lib/instagram-publish";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
  * Publishing sweep (Vercel cron, every 2 minutes, bearer CRON_SECRET): finishes posts
- * whose lead left the page, and refreshes Instagram tokens before they expire.
+ * whose lead left the page, refreshes Instagram tokens before they expire, and probes
+ * each connection once a day so a token Instagram has rejected is found and the team's
+ * leads told (2026-10-30).
  * `?dry=1` reports what it would do. A scoped run, `?only=<video id>,<id>&area=<team id>`,
  * touches only those posts and that team's token: for tests on a local build, which reads
  * the LIVE database, where real posts may be in flight (any `only` or `area` makes the
@@ -26,7 +28,10 @@ export async function GET(request: NextRequest) {
   const failures: string[] = [];
   let posts: Awaited<ReturnType<typeof sweepPublishing>> = [];
   let tokens: Awaited<ReturnType<typeof refreshExpiringTokens>> = [];
+  let connections: Awaited<ReturnType<typeof checkConnections>> = [];
+  const areas = scoped ? (UUID.test(area) ? [area] : []) : null;
   try { posts = await sweepPublishing(db, dry, scoped ? only : null); } catch (e) { failures.push(`sweep: ${e instanceof Error ? e.message : String(e)}`); }
-  try { tokens = await refreshExpiringTokens(db, dry, scoped ? (UUID.test(area) ? [area] : []) : null); } catch (e) { failures.push(`tokens: ${e instanceof Error ? e.message : String(e)}`); }
-  return NextResponse.json({ dry, posts, tokens, failures });
+  try { tokens = await refreshExpiringTokens(db, dry, areas); } catch (e) { failures.push(`tokens: ${e instanceof Error ? e.message : String(e)}`); }
+  try { connections = await checkConnections(db, dry, areas); } catch (e) { failures.push(`connections: ${e instanceof Error ? e.message : String(e)}`); }
+  return NextResponse.json({ dry, posts, tokens, connections, failures });
 }

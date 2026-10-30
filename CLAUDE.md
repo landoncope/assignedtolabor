@@ -64,7 +64,11 @@ the video was one of the frozen 2026-09-19 recordings. Fixed the same day; see t
 sign-in, an upload goal with reminder emails and a countdown, the lead's view of every
 member with email/text/remind) was built on branch `dashboard-goals` (PR #6); see
 "Dashboard" under Decisions. The same day a privilege hole was closed on production:
-any account could have made itself admin with one profile update (`guard_profile_update`).
+any account could have made itself admin with one profile update (`guard_profile_update`),
+and a read-only probe found ALL FOUR teams' Instagram tokens rejected (code 190, the
+English case of 10-27 was not alone); the publish cron now probes every connection
+daily and the leads are emailed to connect again ("Connection health" under the
+Instagram posting decision). Every team must Connect again before its next one-tap post.
 
 ### Where we paused (2026-10-15: captions live, Connect waiting on tester invites)
 
@@ -214,11 +218,22 @@ Nothing is half-built. Pick up here.
   recurs without a password change, Instagram is resetting the session itself
   (a security checkpoint on a new account posting daily), and the fix is the same.
 
-- **2026-10-30, the dashboard and a security fix.** The English lead had posted the
-  two videos the dead token blocked BY HAND on 2026-10-29 (marked posted from the
-  manual flow, so `publish_state` stays `failed` on them; harmless) and the English
-  team is NOT reconnected: no `instagram_accounts` row, so its next one-tap needs
-  Connect again (Philippines, Slovak and Taiwan still hold tokens to 2026-12-19).
+- **2026-10-30, the dashboard, a security fix, and four dead tokens.** The English
+  lead had posted the two videos the dead token blocked BY HAND on 2026-10-29 (marked
+  posted from the manual flow, so `publish_state` stays `failed` on them; harmless)
+  and the English team is NOT reconnected (no `instagram_accounts` row). A read-only
+  `/me` probe with each stored token then showed Philippines, Slovak and Taiwan dead
+  too, all with the same code-190 "session invalidated (password changed or security)"
+  message, all four connected on 2026-10-20 by Travis and the leads. Nothing in our
+  code used those three tokens after 10-21 (the cron refresh only touches tokens
+  within 10 days of expiry), so when they died is unknown; four at once points at the
+  accounts' side (one phone or Accounts Center logging out everywhere, a password
+  change, or an Instagram security sweep), not at a lead. Built the same day: the
+  daily probe (`checkConnections`), the loss written on the team row and shown on the
+  Review page and the dashboard, and the `instagram_lost` email to the leads (admins
+  when the team has none). On its first runs after deploy the probe forgets the three
+  dead connections and the leads are emailed; English gets no email (no row to probe
+  and no loss record), its lead knows from Travis.
   Security: `update profiles set role = 'admin'` worked for any signed-in account
   (RLS update policy covered every column); proven in a rolled-back transaction,
   fixed with a trigger and pushed to main and production within the hour (b089f74).
@@ -588,6 +603,17 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     Pre-checks before asking Instagram: file present, at most 300 MB, 3 s to 15 min,
     and (2026-10-21) no frozen picture in `capture_meta.picture`, which also removes
     the one-tap button from the page.
+    **Connection health (2026-10-30):** `checkConnections` in the publish cron probes
+    each connection with one `/me` call once a day (`instagram_accounts.checked_at`),
+    skipping connections or probes younger than a day (a test build's mock connection
+    lives for minutes; production must never send its token to the real Instagram).
+    Wherever a token is rejected (code 190: a post, a status check, the refresh, the
+    probe, a dashboard stats fetch), `forgetRejected` removes the connection and writes
+    `areas.instagram_lost_at` / `instagram_lost_reason`; the Review page's account row
+    and the dashboard's team card show the reason, and the notify sweep (section 9)
+    emails the team's leads once (`instagram_lost`, admins when the team has no lead;
+    `instagram_lost_notified_at`). The next Connect clears all three columns.
+    Migration `20261030150000_instagram_health.sql`.
     Without a connected account the review page shows the manual flow as before plus
     a link to connect.
   - Meta's callbacks: `POST /api/instagram/deauthorize` and `/api/instagram/data-deletion`
@@ -615,9 +641,12 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     screenshots of the pending, failed and frozen states to the optional third
     argument; and (2026-10-28) a token Instagram rejects at post time, which fails
     the post with "connect again", forgets the connection and brings Connect back.
-    All 41 passed on 2026-10-13, 43 on 2026-10-21, 45 on 2026-10-28, 59 on 2026-10-30
-    (the dashboard, see Dashboard under Decisions). Its cron calls are scoped to its
-    own rows (see the cron above): real posts are in flight now.
+    All 41 passed on 2026-10-13, 43 on 2026-10-21, 45 on 2026-10-28, 65 on 2026-10-30
+    (the dashboard, see Dashboard under Decisions, and the daily probe: a connection
+    checked within the day left alone, a healthy one noted, a rejected one forgotten
+    with the loss on the team row, the `instagram_lost` email planned, the reason on
+    the Review page, Connect clearing it). Its cron calls are scoped to its own rows
+    (see the cron above): real posts are in flight now.
     The mock takes `/__config?badcode=1` to hand back a bad code once and
     `/__config?deadtoken=1` to reject the token (code 190) on the next Graph call.
     Against the real Instagram, two helpers: `node scripts/dev/instagram-live-test.mjs

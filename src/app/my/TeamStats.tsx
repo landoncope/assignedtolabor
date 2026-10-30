@@ -49,6 +49,9 @@ export default function TeamStats({ team, overview, stats, isLead, compact = fal
           <span className="text-xs text-muted">{isLead ? <>Not connected. <Link href="/review#instagram" className="text-accent underline">Connect it on the Review page</Link>.</> : "Not connected yet (its lead connects it from the Review page)."}</span>
         )}
       </div>
+      {!connected && team.instagram_lost_at && (
+        <p className="mt-2 text-xs text-danger">Instagram ended the connection on {new Date(team.instagram_lost_at).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}: {team.instagram_lost_reason}</p>
+      )}
 
       {p ? (
         <>
