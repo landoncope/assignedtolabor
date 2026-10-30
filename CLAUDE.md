@@ -58,7 +58,13 @@ Slovak, Taiwan) and the English team posted the first real Reel from the site**
 (2026-10-21 09:38 UTC, a 66 s iPhone clip, https://www.instagram.com/reel/DewGfhWFAHl/).
 The Philippines lead's first one-tap post failed with a bare "ERROR" from Instagram:
 the video was one of the frozen 2026-09-19 recordings. Fixed the same day; see the
-2026-10-21 bullet under "Where we paused".
+2026-10-21 bullet under "Where we paused". The English team posted daily until
+2026-10-27, when Instagram invalidated its token (code 190); handled 2026-10-28.
+**2026-10-30: the dashboard** (Travis's next body of work: team Instagram numbers on
+sign-in, an upload goal with reminder emails and a countdown, the lead's view of every
+member with email/text/remind) was built on branch `dashboard-goals` (PR #6); see
+"Dashboard" under Decisions. The same day a privilege hole was closed on production:
+any account could have made itself admin with one profile update (`guard_profile_update`).
 
 ### Where we paused (2026-10-15: captions live, Connect waiting on tester invites)
 
@@ -208,6 +214,19 @@ Nothing is half-built. Pick up here.
   recurs without a password change, Instagram is resetting the session itself
   (a security checkpoint on a new account posting daily), and the fix is the same.
 
+- **2026-10-30, the dashboard and a security fix.** The English lead had posted the
+  two videos the dead token blocked BY HAND on 2026-10-29 (marked posted from the
+  manual flow, so `publish_state` stays `failed` on them; harmless) and the English
+  team is NOT reconnected: no `instagram_accounts` row, so its next one-tap needs
+  Connect again (Philippines, Slovak and Taiwan still hold tokens to 2026-12-19).
+  Security: `update profiles set role = 'admin'` worked for any signed-in account
+  (RLS update policy covered every column); proven in a rolled-back transaction,
+  fixed with a trigger and pushed to main and production within the hour (b089f74).
+  The dashboard shipped as PR #6: see "Dashboard" under Decisions for what it does,
+  the Meta-app step that unlocks reach and views (`INSTAGRAM_INSIGHTS`), and the open
+  wording question (the nav tab still says "My videos"; Travis asked for the tabs to
+  stay as they are).
+
 ### After the 2026-09-19 event (do these, then delete this list)
 
 - iPhone data rate, measured 2026-10-03 and reported to Landon; HIS CALL, do not change
@@ -346,6 +365,10 @@ Nothing is half-built. Pick up here.
    the team rows (`areas.instagram_handle`); Spanish and Swahili still have none.
    Whether each is a professional account is unknown; Instagram refuses a personal
    one at Connect with its own message.
+   **To add for the dashboard (2026-10-30, not done):** the permission
+   `instagram_business_manage_insights` (Use cases -> Customize -> Permissions and
+   features; Standard Access covers tester accounts), then `INSTAGRAM_INSIGHTS=1` in
+   Vercel and each team connects again; see Dashboard under Decisions.
    **2026-10-20:** Travis confirmed the Slovak channel and the Chinese username, and
    said every account had accepted. The roles page agreed for liwanag.ni.kristo,
    milosrdenstvo.vasho.vykupitela, _a_new_beginning and seek_this_jesus_ (no Pending
@@ -592,8 +615,9 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     screenshots of the pending, failed and frozen states to the optional third
     argument; and (2026-10-28) a token Instagram rejects at post time, which fails
     the post with "connect again", forgets the connection and brings Connect back.
-    All 41 passed on 2026-10-13, 43 on 2026-10-21, 45 on 2026-10-28. Its cron calls
-    are scoped to its own rows (see the cron above): real posts are in flight now.
+    All 41 passed on 2026-10-13, 43 on 2026-10-21, 45 on 2026-10-28, 59 on 2026-10-30
+    (the dashboard, see Dashboard under Decisions). Its cron calls are scoped to its
+    own rows (see the cron above): real posts are in flight now.
     The mock takes `/__config?badcode=1` to hand back a bad code once and
     `/__config?deadtoken=1` to reject the token (code 190) on the next Graph call.
     Against the real Instagram, two helpers: `node scripts/dev/instagram-live-test.mjs
@@ -689,6 +713,80 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     sweep unrestricted, which captioned five real approved videos with the mock's fake
     transcript; they were reset by hand within the minute, before anything was
     deployed or seen.** Never call a sweep route bare from a local test.
+- **Dashboard (2026-10-30, Travis's request, built the same day; PR #6).** `/my`,
+  where sign-in lands, is now the dashboard (heading "Dashboard"; the nav tab keeps
+  its "My videos" label because Travis asked for the tabs to stay exactly as they
+  are; renaming it is one word in `Nav.tsx` if he wants). Anonymous sessions still get
+  the plain "My videos" list. Signed in, top to bottom:
+  - **Your team(s):** for each team the person is on (member or lead), a card with
+    what Instagram says about the team's account and what this site knows
+    (`src/app/my/TeamStats.tsx`). From Instagram, with the permissions we already
+    hold: followers, following, post count, the newest 24 posts with likes and
+    comments (shown as a thumbnail strip). With `instagram_business_manage_insights`
+    (NOT held yet, see below): the last 30 days of reach, views and interactions, and
+    each of the newest 12 posts' views. From this site (`team_overview(aid)`, a
+    security-definer function for members, leads and admins): videos sent in 30 days,
+    posted in 30 days, waiting for review, people on the team. Not connected: the card
+    says so and leads get a link to Connect. Not on a team: Travis's words, "Apply to
+    start or join a team. After joining, you will see your team's data here", with
+    buttons to /my/teams and /lead. Admins also get a compact one-line list of every
+    other team (cached numbers only).
+  - **Upload goal** (`GoalCard.tsx`, `src/lib/goals.ts`): four buttons, Twice a week
+    (every 84 h), Once a week (7 d), Twice a month (15 d), Once a month (30 d).
+    Choosing one is the agreement to reminder emails (the small print says so and
+    names the address). The clock runs from the later of the last upload and the
+    moment the goal was chosen; the card shows "Due in N days / Due today / N days
+    overdue", the due day, a progress bar (accent, gold when the reminder window has
+    started, red when overdue), videos in the last 30 days, Change and Remove.
+    Columns on `profiles`: `upload_goal`, `upload_goal_set_at`, `goal_reminded_for`;
+    `guard_profile_update` restarts the clock and clears the reminder whenever the
+    goal changes, so the app only ever writes `upload_goal`.
+  - **Reminder emails:** section 8 of `/api/cron/notify` (every 5 min), kind
+    `goal_reminder`, one per due date, sent when the due date is within the goal's
+    window (12 h for twice a week, 1 d weekly, 2 d twice a month, 3 d monthly);
+    `goal_reminded_for` = the due date sent for, so the next upload (a new due date)
+    earns the next reminder and an overdue person is emailed once, not daily. The
+    footer links the dashboard to change or remove the goal.
+  - **The lead's view** (`LeadTeams.tsx`; `team_goal_report(aid)`, leads of that team
+    and admins, no rows for anyone else): every member and lead with a status pill
+    (Overdue / Due soon / On track / No goal), goal and due line, last video with the
+    date, uploads in 30 days and in all, most overdue first. Reaching them: an
+    **Email** link (`mailto:` with a prefilled subject and body, opens the lead's own
+    mail app), a **Text** link (`sms:` with the body prefilled, works on iPhone and
+    Android) when the member has given a phone number, and **Send a reminder from the
+    site** (server action `nudgeMember`: our email through Resend naming the lead,
+    their optional line, the member's last video and the recorder link; one per
+    member per team per day; logged in `notifications` as `goal_nudge`). SMS from the
+    server is NOT built (no provider; Twilio would need A2P registration and
+    international numbers), so texting is the lead's own phone.
+  - **About you** (`ProfileCard.tsx`): name and optional phone (`profiles.phone`),
+    which `profiles_select_for_leads` already exposes to the person's team leads; the
+    privacy page says so.
+  - **Instagram numbers cache:** `instagram_stats` (one row per team, RLS on with no
+    policies), `src/lib/instagram-stats.ts`. A first dashboard view after connecting
+    fetches inline (2 to 15 requests); a view of numbers older than 6 h refreshes them
+    after the response (`after()` from next/server). ONLY a view by someone on the
+    team fetches, never a cron and never the admin's list of other teams: a local test
+    build talks to the mock Instagram with the live database, and a real token sent to
+    the mock (or a mock token sent to the real Instagram by production's cron) comes
+    back code 190, which forgets the connection. A 190 during a stats refresh forgets
+    the connection too, like a failed post.
+  - **Reach and views need a Meta-app step (not done):** add
+    `instagram_business_manage_insights` under Use cases -> Customize -> Permissions
+    (Standard Access, no review for tester accounts), set `INSTAGRAM_INSIGHTS=1` in
+    Vercel, redeploy, and have each team Connect again (the scope is only asked for at
+    login; connections made before keep working without it). Setting the variable
+    before the permission exists makes Instagram refuse every login, so the order
+    matters. Until then the cards show followers, posts, likes and comments.
+  - **Tests:** `scripts/dev/dashboard-sql-check.sh` (23 rolled-back checks: the goal
+    columns and trigger, who gets `team_goal_report` and `team_overview` rows, the
+    phone number's visibility, `instagram_stats` unreadable); the Instagram flow check
+    gained 14 checks (the mock answers `/me` with counts, `GET /me/media`, `/me/insights`
+    and per-post insights; the run sets `INSTAGRAM_INSIGHTS=1`): the numbers on the
+    page and in the cache, choosing a goal and its countdown, the lead's view, the
+    email and text links, a reminder really sent to Resend's test inbox and the
+    second one refused, the notify dry run planning a `goal_reminder`, the stale
+    refresh after a view, and a phone-width screenshot `shots/dashboard.png`.
 - **One-tap posting, researched 2026-10-03** (primary sources read that day by a
   research agent; notes in the session scratchpad are not kept, so the facts are here):
   - Instagram, with "Instagram API with Instagram Login" (permissions
@@ -777,9 +875,12 @@ src/lib/instagram.ts        Instagram API with Instagram Login (login, tokens, R
 src/lib/instagram-publish.ts  one-tap publish state machine + connection storage (service role)
 src/lib/instagram-notice.ts the ?instagram_connected / ?instagram_error notice after connecting
 src/lib/captions.ts         AI-suggested captions: ElevenLabs transcript + Claude draft, the sweep (service role)
+src/lib/goals.ts            upload goals: the four cadences, the countdown, when a reminder is due
+src/lib/instagram-stats.ts  the team's Instagram numbers for the dashboard, cached in instagram_stats
 src/components/             Nav, VideoRecorder (multi-clip + teleprompter), VideoPlayer (signed URL),
                             InstagramConnections (connect/disconnect a team's account)
-src/app/                    / landing, /upload flow, /qr poster, /login, /auth/*, /my,
+src/app/                    / landing, /upload flow, /qr poster, /login, /auth/*, /my (the
+                            dashboard: team numbers, upload goal, the lead's view, my videos),
                             /my/teams (join/start a team), /lead (+/video: team lead
                             application), /review (+/[id], /requests), /admin,
                             /api/videos/[id]/{playback-url,publish-status},
@@ -799,7 +900,9 @@ mints a throwaway admin session cookie; note the Chrome automation permission la
 refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
 Tests that need NO captcha change (they never sign in anonymously or by password):
 `scripts/dev/lead-sql-check.sh` (44 rule checks as throwaway users inside one
-rolled-back transaction, by setting the JWT claims Postgres sees) and
+rolled-back transaction, by setting the JWT claims Postgres sees),
+`scripts/dev/profiles-guard-check.sh` (8) and `scripts/dev/dashboard-sql-check.sh`
+(23, same harness) and
 `node scripts/dev/lead-flow-check.mjs http://localhost:3001 fake-cam.y4m [dir]` (44
 browser checks of the team lead application; build and start with
 `NEXT_PUBLIC_TURNSTILE_SITE_KEY= NEXT_PUBLIC_SITE_URL=http://localhost:3001`). Their
@@ -817,7 +920,11 @@ redirects to localhost and the sign-in cookie does not follow across hostnames.
   until then any account could have promoted itself to admin with one REST update;
   found while adding dashboard columns, applied to production the same hour;
   `scripts/dev/profiles-guard-check.sh` runs 8 rolled-back checks). Admins and callers
-  with no user id (service role, auth triggers) are not restricted. Managers are rows in
+  with no user id (service role, auth triggers) are not restricted. The same trigger
+  keeps the upload goal's clock (`upload_goal`, `upload_goal_set_at`,
+  `goal_reminded_for`, plus the optional `phone`; migration
+  `20261030120000_dashboard_goals.sql`, which also adds `is_team_member(aid)`,
+  `team_overview(aid)`, `team_goal_report(aid)` and the `instagram_stats` table). Managers are rows in
   `area_managers`; `manager_invites` holds emails that have not signed in yet and is
   applied by the same trigger on first sign-in or on anonymous-to-email upgrade.
 - Teams (2026-09-17, Travis's request for the Saturday event): `area_members` (team
@@ -1237,7 +1344,8 @@ redirects to localhost and the sign-in cookie does not follow across hostnames.
   id and secret, not the Meta app's; see "Meta app" under Account setup),
   `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SITE_URL`, `CRON_SECRET`, `RESEND_API_KEY`,
   `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `ELEVENLABS_API_KEY`, `ANTHROPIC_API_KEY` (2026-10-15,
-  AI captions; optional `CAPTION_MODEL`).
+  AI captions; optional `CAPTION_MODEL`), `INSTAGRAM_INSIGHTS` (2026-10-30, optional,
+  `1` asks for the insights permission at Connect; see Dashboard under Decisions).
   Template in `.env.example`.
 
 ## Working rules for Claude in this repo
