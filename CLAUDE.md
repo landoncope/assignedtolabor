@@ -382,10 +382,11 @@ Nothing is half-built. Pick up here.
    the team rows (`areas.instagram_handle`); Spanish and Swahili still have none.
    Whether each is a professional account is unknown; Instagram refuses a personal
    one at Connect with its own message.
-   **To add for the dashboard (2026-10-30, not done):** the permission
-   `instagram_business_manage_insights` (Use cases -> Customize -> Permissions and
-   features; Standard Access covers tester accounts), then `INSTAGRAM_INSIGHTS=1` in
-   Vercel and each team connects again; see Dashboard under Decisions.
+   **Added 2026-10-30 for the dashboard** (Claude in Landon's Chrome, no password
+   re-check asked): the permission `instagram_business_manage_insights` (Use cases ->
+   Customize -> Permissions and features -> Add; now "Ready for testing" like the
+   other two), then `INSTAGRAM_INSIGHTS=1` in Vercel (Config, Production and Preview)
+   and a deploy. Each team grants it at its next Connect; see Dashboard under Decisions.
    **2026-10-20:** Travis confirmed the Slovak channel and the Chinese username, and
    said every account had accepted. The roles page agreed for liwanag.ni.kristo,
    milosrdenstvo.vasho.vykupitela, _a_new_beginning and seek_this_jesus_ (no Pending
@@ -802,13 +803,13 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     the mock (or a mock token sent to the real Instagram by production's cron) comes
     back code 190, which forgets the connection. A 190 during a stats refresh forgets
     the connection too, like a failed post.
-  - **Reach and views need a Meta-app step (not done):** add
-    `instagram_business_manage_insights` under Use cases -> Customize -> Permissions
-    (Standard Access, no review for tester accounts), set `INSTAGRAM_INSIGHTS=1` in
-    Vercel, redeploy, and have each team Connect again (the scope is only asked for at
-    login; connections made before keep working without it). Setting the variable
-    before the permission exists makes Instagram refuse every login, so the order
-    matters. Until then the cards show followers, posts, likes and comments.
+  - **Reach and views (done 2026-10-30):** `instagram_business_manage_insights` is on
+    the Meta app (Use cases -> Customize -> Permissions; Standard Access, no review for
+    tester accounts) and `INSTAGRAM_INSIGHTS=1` is set in Vercel, so Connect now asks
+    for three scopes; a team grants it the next time its lead connects (connections
+    made before keep working without it, and the card shows followers, posts, likes
+    and comments until then). The order mattered: the variable before the permission
+    would have made Instagram refuse every login.
   - **Tests:** `scripts/dev/dashboard-sql-check.sh` (23 rolled-back checks: the goal
     columns and trigger, who gets `team_goal_report` and `team_overview` rows, the
     phone number's visibility, `instagram_stats` unreadable); the Instagram flow check
