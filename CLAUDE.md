@@ -811,7 +811,13 @@ redirects to localhost and the sign-in cookie does not follow across hostnames.
 ### Data model and rules
 
 - `profiles` mirrors `auth.users` (trigger). `role` is `member` or `admin`. Admin is
-  granted automatically to emails in `admin_seed_emails`. Managers are rows in
+  granted automatically to emails in `admin_seed_emails`. Since 2026-10-30 the
+  `guard_profile_update` trigger stops a signed-in person changing their own `role`,
+  `email`, `is_anonymous` or `created_at` (the update policy covers every column, so
+  until then any account could have promoted itself to admin with one REST update;
+  found while adding dashboard columns, applied to production the same hour;
+  `scripts/dev/profiles-guard-check.sh` runs 8 rolled-back checks). Admins and callers
+  with no user id (service role, auth triggers) are not restricted. Managers are rows in
   `area_managers`; `manager_invites` holds emails that have not signed in yet and is
   applied by the same trigger on first sign-in or on anonymous-to-email upgrade.
 - Teams (2026-09-17, Travis's request for the Saturday event): `area_members` (team
