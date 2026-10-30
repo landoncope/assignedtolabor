@@ -4,7 +4,7 @@ Owner: Landon Cope (landon@highpsiproducts.com). Product owner: Travis (non-tech
 Claude owns this repo: language, dependencies, architecture, and this file. Keep CLAUDE.md
 current whenever a decision is made or reversed. Dates below are absolute (YYYY-MM-DD).
 
-## Status (2026-10-13)
+## Status (2026-10-30)
 
 **MVP is live in production at https://assignedtolabor.org.** Landon and Travis are
 admins and are testing. Working and verified: anonymous upload with portrait 9:16
@@ -70,7 +70,7 @@ English case of 10-27 was not alone); the publish cron now probes every connecti
 daily and the leads are emailed to connect again ("Connection health" under the
 Instagram posting decision). Every team must Connect again before its next one-tap post.
 
-### Where we paused (2026-10-15: captions live, Connect waiting on tester invites)
+### Where we paused (2026-10-30: dashboard live, every team must reconnect Instagram)
 
 Nothing is half-built. Pick up here.
 
@@ -231,9 +231,11 @@ Nothing is half-built. Pick up here.
   change, or an Instagram security sweep), not at a lead. Built the same day: the
   daily probe (`checkConnections`), the loss written on the team row and shown on the
   Review page and the dashboard, and the `instagram_lost` email to the leads (admins
-  when the team has none). On its first runs after deploy the probe forgets the three
-  dead connections and the leads are emailed; English gets no email (no row to probe
-  and no loss record), its lead knows from Travis.
+  when the team has none). Deployed 17:25 UTC; the probe forgot the three dead
+  connections at 17:26 and the sweep emailed five people at 17:30 (Rock Gray for
+  Taiwan; Brady and Christian for Philippines; Landon and Travis for Slovak, which has
+  no lead). English got no email (no row to probe, no loss record); its lead knows
+  from Travis. As of 17:30 UTC NO team is connected; each lead reconnects on /review.
   Security: `update profiles set role = 'admin'` worked for any signed-in account
   (RLS update policy covered every column); proven in a rolled-back transaction,
   fixed with a trigger and pushed to main and production within the hour (b089f74).
