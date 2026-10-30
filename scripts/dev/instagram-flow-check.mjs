@@ -31,7 +31,9 @@ const until = async (fn, ms = 30_000) => { const end = Date.now() + ms; for (;;)
 const signedRequest = (payload, secret = MOCK_SECRET) => { const p = Buffer.from(JSON.stringify({ algorithm: "HMAC-SHA256", issued_at: Math.floor(Date.now() / 1000), ...payload })).toString("base64url"); return `${createHmac("sha256", secret).update(p).digest("base64url")}.${p}`; };
 const postForm = (path, form) => fetch(`${base}${path}`, { method: "POST", body: new URLSearchParams(form) });
 
-const created = { userId: null, userId2: null, areaId: null, videoIds: [], paths: [] };
+const created = { userId: null, userId2: null, userId3: null, areaId: null, videoIds: [], paths: [] };
+// The member who gets a reminder email from the site: a real inbox (Resend's test address), since the email is really sent.
+const email3 = `delivered+igcheck${ts}@resend.dev`;
 const tmp = mkdtempSync(join(tmpdir(), "ig-check-"));
 let browser;
 try {
@@ -49,6 +51,15 @@ try {
   const { data: area, error: aErr } = await db.from("areas").insert({ name: "Instagram Mock Team", language: "Klingon", is_active: true, sort_order: 999 }).select("id").single();
   if (aErr) throw new Error(aErr.message);
   created.areaId = area.id;
+  // The admin is also a member of the team (a team's numbers are shown to its members),
+  // and a second member, without a goal, is there for the lead's view and the reminder.
+  await db.from("area_members").insert({ area_id: created.areaId, user_id: created.userId });
+  const { data: u3, error: u3Err } = await db.auth.admin.createUser({ email: email3, email_confirm: true });
+  if (u3Err) throw new Error(u3Err.message);
+  created.userId3 = u3.user.id;
+  await until(async () => (await db.from("profiles").select("id").eq("id", created.userId3).maybeSingle()).data, 10_000);
+  await db.from("profiles").update({ display_name: "Goal Member" }).eq("id", created.userId3);
+  await db.from("area_members").insert({ area_id: created.areaId, user_id: created.userId3 });
   const file = join(tmp, "clip.mp4");
   execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=360x640:rate=30", "-f", "lavfi", "-i", "sine=frequency=440", "-t", "4", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", file]);
   const bytes = readFileSync(file);
@@ -109,6 +120,58 @@ try {
   check("team row carries the connection (no token)", areaRow?.instagram_user_id === IG_USER_ID && areaRow.instagram_handle === "atl_mock_team" && !!areaRow.instagram_connected_at);
   const anonSelect = await createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY).from("instagram_accounts").select("access_token").limit(1);
   check("tokens are unreadable through the public API", !anonSelect.error && (anonSelect.data ?? []).length === 0, anonSelect.error?.message ?? `${(anonSelect.data ?? []).length} rows`);
+
+  // Dashboard (2026-10-30): the team's Instagram numbers, the upload goal, the lead's view.
+  await page.goto(`${base}/my`);
+  await page.getByText("Upload goal").waitFor({ timeout: 30_000 });
+  const dash = await page.textContent("body");
+  check("dashboard shows the team's Instagram numbers from the mock", dash.includes("@atl_mock_team") && dash.includes("1,234") && dash.includes("Followers") && dash.includes("57 likes"), dash.includes("@atl_mock_team") ? "" : dash.slice(0, 300));
+  check("dashboard shows the last 30 days' reach and views (insights scope granted)", dash.includes("4,321 accounts reached") && dash.includes("9,876 views"));
+  check("dashboard shows the team's own numbers", /9 videos sent to the team in the last 30 days/.test(dash) && /2 people on the team/.test(dash));
+  const statsRow = (await db.from("instagram_stats").select("*").eq("area_id", created.areaId).maybeSingle()).data;
+  check("numbers are cached in instagram_stats with per-post views", statsRow?.profile?.followers === 1234 && (statsRow.media ?? []).length >= 2 && statsRow.insights?.reach === 4321 && statsRow.media[0].views === 120 && !!statsRow.succeeded_at && !statsRow.error, JSON.stringify(statsRow)?.slice(0, 200));
+  const pub = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+  const statsAnon = await pub.from("instagram_stats").select("*");
+  check("the cached numbers are unreadable through the public API", !statsAnon.error && (statsAnon.data ?? []).length === 0, statsAnon.error?.message ?? `${(statsAnon.data ?? []).length} rows`);
+  await page.getByRole("button", { name: "Once a week" }).click();
+  await page.getByText("Due in 7 days").first().waitFor({ timeout: 20_000 });
+  const prof = (await db.from("profiles").select("upload_goal, upload_goal_set_at, goal_reminded_for").eq("id", created.userId).single()).data;
+  check("goal saved with its start time and a 7-day countdown", prof?.upload_goal === "weekly" && !!prof.upload_goal_set_at && !prof.goal_reminded_for, JSON.stringify(prof));
+  const teamCard = page.locator(`[data-team="${created.areaId}"]`);
+  const cardText = await teamCard.textContent();
+  check("lead's view lists everyone with their goal and last video", /2 people · 1 with a goal · 0 overdue/.test(cardText) && /IG Check/.test(cardText) && /Once a week · Due in 7 days/.test(cardText) && /Last video today/.test(cardText) && /Goal Member/.test(cardText) && /No goal set/.test(cardText), cardText.slice(0, 400));
+  const memberRow = teamCard.locator("li", { hasText: "Goal Member" });
+  check("a member's row offers an email link and says there is no phone yet", (await memberRow.locator('a[href^="mailto:"]').count()) === 1 && (await memberRow.getByText("No phone on file").count()) === 1);
+  await memberRow.getByRole("button", { name: "Send a reminder from the site" }).click();
+  await memberRow.getByPlaceholder(/A line from you/).fill("We miss your videos!");
+  await memberRow.getByRole("button", { name: "Send the reminder" }).click();
+  await memberRow.getByText(/^Sent to /).waitFor({ timeout: 30_000 });
+  const nudge = (await db.from("notifications").select("kind, recipient, area_id, provider_id").eq("kind", "goal_nudge").eq("recipient", email3).order("sent_at", { ascending: false }).limit(1).maybeSingle()).data;
+  check("a reminder email went out from the site and was logged", nudge?.area_id === created.areaId && !!nudge.provider_id, JSON.stringify(nudge));
+  await memberRow.getByRole("button", { name: "Send a reminder from the site" }).click();
+  await memberRow.getByRole("button", { name: "Send the reminder" }).click();
+  await memberRow.getByText(/already went to them/).waitFor({ timeout: 20_000 });
+  check("a second reminder the same day is refused", true);
+  await db.from("profiles").update({ phone: "+1 801 555 0199" }).eq("id", created.userId3);
+  await page.reload();
+  check("a phone number on file adds a Text link", (await page.locator(`[data-team="${created.areaId}"] li`, { hasText: "Goal Member" }).locator('a[href^="sms:+18015550199"]').count()) === 1);
+  // The reminder email: move the clock so the next video is due within the day (the test
+  // videos are made older than the goal, so the goal's own start is what counts).
+  await db.from("videos").update({ created_at: new Date(Date.now() - 8 * 86400_000).toISOString() }).in("id", created.videoIds);
+  await db.from("profiles").update({ upload_goal_set_at: new Date(Date.now() - 7 * 86400_000 + 3600_000).toISOString() }).eq("id", created.userId);
+  const plan = await (await fetch(`${base}/api/cron/notify?dry=1`, { headers: { authorization: `Bearer ${env.CRON_SECRET}` } })).json();
+  check("the notify sweep plans a goal reminder when the due date is a day away", plan.plan?.some((p) => p.kind === "goal_reminder" && p.to === email), JSON.stringify((plan.plan ?? []).filter((p) => p.kind === "goal_reminder")));
+  await page.goto(`${base}/my`);
+  check("the dashboard shows the goal as due today", (await page.textContent("body")).includes("Due today"));
+  // Numbers older than a few hours are refreshed after a dashboard view (never by a cron).
+  await db.from("instagram_stats").update({ fetched_at: new Date(Date.now() - 7 * 3600_000).toISOString() }).eq("area_id", created.areaId);
+  await page.goto(`${base}/my`);
+  const refreshed = await until(async () => { const r = (await db.from("instagram_stats").select("fetched_at").eq("area_id", created.areaId).single()).data; return r && Date.now() - new Date(r.fetched_at).getTime() < 60_000 ? r : null; }, 20_000);
+  check("a dashboard view refreshes numbers older than a few hours, after the response", !!refreshed, refreshed ? "" : "fetched_at not updated");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${base}/my`);
+  await page.screenshot({ path: join(shots, "dashboard.png"), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 720 });
 
   // One tap on a pending video.
   await page.goto(`${base}/review/${A}`);
@@ -298,6 +361,8 @@ try {
   if (created.areaId) await db.from("areas").delete().eq("id", created.areaId);
   if (created.userId) await db.auth.admin.deleteUser(created.userId);
   if (created.userId2) await db.auth.admin.deleteUser(created.userId2);
+  if (created.userId3) await db.auth.admin.deleteUser(created.userId3);
+  await db.from("notifications").delete().eq("kind", "goal_nudge").eq("recipient", email3);
   rmSync(tmp, { recursive: true, force: true });
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);

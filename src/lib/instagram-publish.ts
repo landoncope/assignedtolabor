@@ -80,10 +80,10 @@ function current(v: VideoRow): PublishOutcome {
  * posts). A retry can never succeed, so the connection is forgotten like a deauthorize
  * and the page shows Connect again.
  */
-function tokenRejected(e: unknown): boolean {
+export function tokenRejected(e: unknown): boolean {
   return e instanceof ig.InstagramError && e.code === 190;
 }
-async function forgetRejected(db: Db, areaId: string, username: string | null): Promise<string> {
+export async function forgetRejected(db: Db, areaId: string, username: string | null): Promise<string> {
   await removeConnection(db, { areaId });
   return `Instagram no longer accepts our connection to @${(username ?? "").replace(/^@/, "") || "the team's account"} (it says the account's password changed or it ended the session for security reasons). Connect the account again from this page, logged in to it, then post.`;
 }

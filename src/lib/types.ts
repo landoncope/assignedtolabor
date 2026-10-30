@@ -7,6 +7,12 @@ export type Profile = {
   display_name: string | null;
   role: Role;
   is_anonymous: boolean;
+  /** Optional, typed by the person so their team lead can text them (2026-10-30). */
+  phone: string | null;
+  /** The upload goal and its clock; see src/lib/goals.ts. */
+  upload_goal: UploadGoal | null;
+  upload_goal_set_at: string | null;
+  goal_reminded_for: string | null;
   created_at: string;
 };
 
@@ -24,6 +30,7 @@ export type Area = {
 };
 
 import type { CaptureMeta } from "@/lib/capture-meta";
+import type { UploadGoal } from "@/lib/goals";
 
 export type Script = { hook: string | null; body: string | null; cta: string | null };
 

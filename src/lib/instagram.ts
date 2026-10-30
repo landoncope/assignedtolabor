@@ -13,6 +13,17 @@ const GRAPH_BASE = process.env.INSTAGRAM_GRAPH_BASE ?? "https://graph.instagram.
 const VERSION = process.env.INSTAGRAM_API_VERSION ?? "v24.0";
 
 export const INSTAGRAM_SCOPES = ["instagram_business_basic", "instagram_business_content_publish"] as const;
+/**
+ * Optional, for the dashboard's reach and views (2026-10-30): asked for at Connect only
+ * when INSTAGRAM_INSIGHTS=1, which needs the permission added to the Meta app first
+ * (Use cases -> Customize; see CLAUDE.md), or Instagram refuses the whole login. A
+ * connection made before the switch keeps working without it (followers, likes and
+ * comments need only instagram_business_basic) until the lead connects again.
+ */
+export const INSIGHTS_SCOPE = "instagram_business_manage_insights";
+export function insightsRequested(): boolean {
+  return process.env.INSTAGRAM_INSIGHTS === "1";
+}
 /** Registered in the Meta app's business login settings; must match exactly. */
 export const REDIRECT_URI = `${siteUrl}/api/instagram/callback`;
 
@@ -75,7 +86,7 @@ export function authorizeUrl(state: string): string {
   u.searchParams.set("client_id", appId());
   u.searchParams.set("redirect_uri", REDIRECT_URI);
   u.searchParams.set("response_type", "code");
-  u.searchParams.set("scope", INSTAGRAM_SCOPES.join(","));
+  u.searchParams.set("scope", [...INSTAGRAM_SCOPES, ...(insightsRequested() ? [INSIGHTS_SCOPE] : [])].join(","));
   u.searchParams.set("state", state);
   return u.toString();
 }
@@ -124,6 +135,61 @@ export async function me(token: string): Promise<IgProfile> {
   const j = await graphGet("me", token, { fields: "id,user_id,username,account_type,name" });
   const appScopedId = str(j.id) ?? "";
   return { appScopedId, userId: str(j.user_id) ?? appScopedId, username: str(j.username), accountType: str(j.account_type), name: str(j.name) };
+}
+
+// ── The dashboard's numbers (2026-10-30; src/lib/instagram-stats.ts caches them) ──
+
+export type IgAccountStats = { username: string | null; name: string | null; pictureUrl: string | null; followers: number | null; follows: number | null; mediaCount: number | null };
+
+/** Followers and friends: all on the user node with instagram_business_basic. */
+export async function accountStats(token: string): Promise<IgAccountStats> {
+  const j = await graphGet("me", token, { fields: "id,username,name,profile_picture_url,followers_count,follows_count,media_count" });
+  return { username: str(j.username), name: str(j.name), pictureUrl: str(j.profile_picture_url), followers: num(j.followers_count) ?? null, follows: num(j.follows_count) ?? null, mediaCount: num(j.media_count) ?? null };
+}
+
+export type IgPost = {
+  id: string; caption: string | null; mediaType: string | null; productType: string | null; permalink: string | null;
+  thumbnailUrl: string | null; timestamp: string | null; likes: number | null; comments: number | null;
+  /** Filled only with the insights permission. */
+  views?: number | null; reach?: number | null;
+};
+
+/** The account's newest posts with their likes and comments (instagram_business_basic). */
+export async function recentMedia(token: string, limit = 25): Promise<IgPost[]> {
+  const j = await graphGet("me/media", token, { fields: "id,caption,media_type,media_product_type,permalink,thumbnail_url,media_url,timestamp,like_count,comments_count", limit: String(limit) });
+  return (Array.isArray(j.data) ? (j.data as Json[]) : []).map((m) => ({
+    id: str(m.id) ?? "", caption: str(m.caption), mediaType: str(m.media_type), productType: str(m.media_product_type), permalink: str(m.permalink),
+    thumbnailUrl: str(m.thumbnail_url) ?? (str(m.media_type) === "IMAGE" ? str(m.media_url) : null), timestamp: str(m.timestamp),
+    likes: num(m.like_count) ?? null, comments: num(m.comments_count) ?? null,
+  }));
+}
+
+export type IgAccountInsights = { reach: number | null; views: number | null; interactions: number | null; since: string; until: string; error?: string };
+
+/** An insights row is `{ name, total_value: { value } }` with metric_type=total_value, or `{ name, values: [{ value }] }` without. */
+function metricValue(rows: unknown, name: string): number | null {
+  const row = (Array.isArray(rows) ? (rows as Json[]) : []).find((r) => r.name === name);
+  if (!row) return null;
+  const total = row.total_value as Json | undefined;
+  if (total && typeof total.value === "number") return total.value;
+  const values = row.values as Json[] | undefined;
+  const last = Array.isArray(values) && values.length ? values[values.length - 1] : undefined;
+  return typeof last?.value === "number" ? last.value : null;
+}
+
+/** Reach, views and interactions over a window (instagram_business_manage_insights; Instagram's figures lag up to 48 hours). */
+export async function accountInsights(token: string, since: Date, until: Date): Promise<IgAccountInsights> {
+  const j = await graphGet("me/insights", token, {
+    metric: "reach,views,total_interactions", period: "day", metric_type: "total_value",
+    since: String(Math.floor(since.getTime() / 1000)), until: String(Math.floor(until.getTime() / 1000)),
+  });
+  return { reach: metricValue(j.data, "reach"), views: metricValue(j.data, "views"), interactions: metricValue(j.data, "total_interactions"), since: since.toISOString(), until: until.toISOString() };
+}
+
+/** One post's lifetime views and reach (instagram_business_manage_insights). */
+export async function mediaInsights(token: string, mediaId: string): Promise<{ views: number | null; reach: number | null }> {
+  const j = await graphGet(`${mediaId}/insights`, token, { metric: "views,reach" });
+  return { views: metricValue(j.data, "views"), reach: metricValue(j.data, "reach") };
 }
 
 /** Step 1 of a Reel: Instagram fetches the file from `videoUrl` and processes it. */

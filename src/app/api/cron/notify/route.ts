@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { escapeHtml as esc, sendEmail, siteUrl, type Outgoing } from "@/lib/email";
+import { daysAgo, formatDay, goalStatus, reminderDue } from "@/lib/goals";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { areaLabel } from "@/lib/types";
 
@@ -14,6 +15,8 @@ import { areaLabel } from "@/lib/types";
  *  5. Team lead applications: admins hear when one is complete (answers plus video);
  *     the applicant hears the decision. (The "part 2" email is sent at once by the
  *     application itself, not here.)
+ *  6. Upload goals (2026-10-30): a reminder shortly before the next video is due, one
+ *     per due date; the due date moves with every upload (src/lib/goals.ts).
  * Paragraphs are HTML, so everything a person typed goes through escapeHtml (`esc`).
  * Each item is marked as notified only after its email is accepted by Resend, so a
  * failed send is retried on the next run. `?dry=1` returns the plan without sending.
@@ -24,6 +27,7 @@ const site = `<a href="${siteUrl}" style="color:#6b6b70">${siteUrl.replace(/^htt
 const FOOTER_UPLOADER = `You are receiving this because you sent a video to ${site} and asked to hear what became of it.`;
 const FOOTER_TEAM_REQUEST = `You are receiving this because you asked to join or start a team at ${site}.`;
 const FOOTER_LEAD_APPLICANT = `You are receiving this because you applied to lead a team at ${site}.`;
+const FOOTER_GOAL = `You are receiving this because you set an upload goal at ${site}. Change or remove it on <a href="${siteUrl}/my" style="color:#6b6b70">your dashboard</a>.`;
 
 export async function GET(request: NextRequest) {
   const auth = request.headers.get("authorization") ?? "";
@@ -279,6 +283,40 @@ export async function GET(request: NextRequest) {
           paragraphs: ["The admins did not approve your application to lead a team this time.", ...note, "You are always welcome to record videos of your own, and to apply again later."],
           cta: { label: "Record a video", href: `${siteUrl}/upload` } };
     await deliver("lead_outcome", { ...m, footer: FOOTER_LEAD_APPLICANT }, { area_id: a.area_id }, mark);
+  }
+
+  // 8. Upload goal reminders: one per due date, shortly before it, to people with a goal
+  //    and a confirmed address. `goal_reminded_for` is the due date already sent for.
+  const { data: goalRows } = await db
+    .from("profiles")
+    .select("id, email, display_name, upload_goal, upload_goal_set_at, goal_reminded_for")
+    .not("upload_goal", "is", null)
+    .not("email", "is", null)
+    .eq("is_anonymous", false);
+  type GoalRow = { id: string; email: string; display_name: string | null; upload_goal: string; upload_goal_set_at: string | null; goal_reminded_for: string | null };
+  const goalPeople = (goalRows ?? []) as GoalRow[];
+  if (goalPeople.length) {
+    const { data: uploads } = await db.from("videos").select("user_id, created_at").in("user_id", goalPeople.map((p) => p.id)).order("created_at", { ascending: false });
+    const lastUpload = new Map<string, string>();
+    for (const u of (uploads ?? []) as { user_id: string; created_at: string }[]) if (!lastUpload.has(u.user_id)) lastUpload.set(u.user_id, u.created_at);
+    for (const p of goalPeople) {
+      const s = goalStatus(p.upload_goal, p.upload_goal_set_at, lastUpload.get(p.id) ?? null);
+      if (!s || !reminderDue(s, p.goal_reminded_for)) continue;
+      const due = s.dueAt;
+      const overdue = s.state === "overdue";
+      await deliver("goal_reminder", {
+        to: p.email,
+        subject: overdue ? "Your next video is due" : "Your next video is nearly due",
+        heading: overdue ? "Time for your next video" : "Your next video is nearly due",
+        paragraphs: [
+          `You chose to send a video ${s.goal.label.toLowerCase()} (${s.goal.every}).`,
+          s.sinceIsUpload ? `Your last one was ${daysAgo(s.since)} (${formatDay(s.since)}).` : `You set the goal on ${formatDay(s.since)} and have not sent one since.`,
+          `The next one ${overdue ? "was due" : "is due"} ${formatDay(due)}. Recording it takes about two minutes.`,
+        ],
+        cta: { label: "Record a video", href: `${siteUrl}/upload` },
+        footer: FOOTER_GOAL,
+      }, {}, async () => { await db.from("profiles").update({ goal_reminded_for: due.toISOString() }).eq("id", p.id); });
+    }
   }
 
   return NextResponse.json({ ok: failures.length === 0, dry, planned: plan.length, plan, failures });

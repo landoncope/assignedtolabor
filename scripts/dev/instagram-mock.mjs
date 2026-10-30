@@ -5,7 +5,9 @@
 // INSTAGRAM_GRAPH_BASE all = http://127.0.0.1:3998 (and any INSTAGRAM_APP_ID / _SECRET).
 // Behaviour: a container is IN_PROGRESS for two status checks, then FINISHED; a caption
 // containing MOCKFAIL ends in ERROR instead; media_publish on an unfinished container is
-// refused like the real API. GET /__state shows what happened.
+// refused like the real API. GET /__state shows what happened. For the dashboard
+// (2026-10-30) /me carries follower counts, GET /me/media lists what was published plus
+// two canned older posts, and the insights endpoints answer fixed numbers.
 import { createServer } from "node:http";
 
 const port = Number(process.argv[2] ?? 3998);
@@ -20,6 +22,10 @@ const json = (res, status, body) => { res.writeHead(status, { "content-type": "a
 const oauthError = (res, status, message, code) => json(res, status, { error: { message, type: "OAuthException", code } });
 const readBody = (req) => new Promise((resolve) => { let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => resolve(b)); });
 const validToken = (t) => typeof t === "string" && (t.startsWith("long-") || t.startsWith("short-"));
+const CANNED = [
+  { id: "canned-1", caption: "An older post", media_type: "VIDEO", media_product_type: "REELS", permalink: "https://www.instagram.com/reel/CANNED1/", thumbnail_url: null, timestamp: new Date(Date.now() - 20 * 86400_000).toISOString(), like_count: 57, comments_count: 4 },
+  { id: "canned-2", caption: "An older picture", media_type: "IMAGE", media_product_type: "FEED", permalink: "https://www.instagram.com/p/CANNED2/", media_url: null, timestamp: new Date(Date.now() - 40 * 86400_000).toISOString(), like_count: 12, comments_count: 1 },
+];
 
 createServer(async (req, res) => {
   const url = new URL(req.url, `http://127.0.0.1:${port}`);
@@ -46,7 +52,7 @@ createServer(async (req, res) => {
   if (p === "/oauth/access_token" && req.method === "POST") {
     if (body.client_id !== APP_ID || body.client_secret !== APP_SECRET) return oauthError(res, 400, "Invalid platform app", 10);
     if (!/^MOCKCODE-\d+$/.test(body.code ?? "")) return json(res, 400, { error_type: "OAuthException", code: 400, error_message: "Invalid authorization code" });
-    return json(res, 200, { data: [{ access_token: `short-${++state.tokens}`, user_id: IG_USER_ID, permissions: "instagram_business_basic,instagram_business_content_publish" }] });
+    return json(res, 200, { data: [{ access_token: `short-${++state.tokens}`, user_id: IG_USER_ID, permissions: "instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights" }] });
   }
   if (p === "/access_token") {
     if (params.grant_type !== "ig_exchange_token" || params.client_secret !== APP_SECRET || !validToken(params.access_token)) return oauthError(res, 400, "Invalid token exchange", 190);
@@ -62,7 +68,13 @@ createServer(async (req, res) => {
   if (!validToken(token)) return oauthError(res, 400, "Invalid OAuth access token - Cannot parse access token", 190);
   if (state.deadtoken) { state.deadtoken = false; return json(res, 400, { error: { message: "Error validating access token: The session has been invalidated because the user changed their password or Facebook has changed the session for security reasons.", type: "OAuthException", code: 190, error_subcode: 0 } }); }
 
-  if (p === "/me" && req.method === "GET") return json(res, 200, { id: APP_SCOPED_ID, user_id: IG_USER_ID, username: "atl_mock_team", account_type: "BUSINESS", name: "Mock Team" });
+  if (p === "/me" && req.method === "GET") return json(res, 200, { id: APP_SCOPED_ID, user_id: IG_USER_ID, username: "atl_mock_team", account_type: "BUSINESS", name: "Mock Team", followers_count: 1234, follows_count: 56, media_count: 78 });
+  if (p === "/me/media" && req.method === "GET") {
+    const published = [...state.media.values()].reverse().map((m, i) => ({ id: m.id, caption: m.caption, media_type: "VIDEO", media_product_type: "REELS", permalink: m.permalink, thumbnail_url: null, timestamp: new Date(Date.now() - i * 3600_000).toISOString(), like_count: 3 + i, comments_count: 1 }));
+    return json(res, 200, { data: [...published, ...CANNED], paging: {} });
+  }
+  if (p === "/me/insights" && req.method === "GET") return json(res, 200, { data: [{ name: "reach", period: "day", total_value: { value: 4321 } }, { name: "views", period: "day", total_value: { value: 9876 } }, { name: "total_interactions", period: "day", total_value: { value: 321 } }] });
+  if (/^\/(m-\d+|canned-\d+)\/insights$/.test(p) && req.method === "GET") return json(res, 200, { data: [{ name: "views", period: "lifetime", values: [{ value: 120 }] }, { name: "reach", period: "lifetime", values: [{ value: 90 }] }] });
   if ((p === "/me/media" || p === `/${IG_USER_ID}/media`) && req.method === "POST") {
     if (body.media_type !== "REELS") return oauthError(res, 400, "Only REELS are mocked", 100);
     if (!body.video_url) return oauthError(res, 400, "video_url is required", 100);
