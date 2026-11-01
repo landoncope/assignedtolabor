@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { checkConnections, refreshExpiringTokens, sweepPublishing } from "@/lib/instagram-publish";
+import { sweepRenders } from "@/lib/render";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
@@ -11,7 +12,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * touches only those posts and that team's token: for tests on a local build, which reads
  * the LIVE database, where real posts may be in flight (any `only` or `area` makes the
  * run scoped; a missing half of it then means "none").
+ * Since 2026-11-01 it also renders one waiting video per run (captions, headline,
+ * loudness; a minute or more), so the duration limit is the plan's maximum.
  */
+export const maxDuration = 800;
 const UUID = /^[0-9a-f-]{36}$/;
 
 export async function GET(request: NextRequest) {
@@ -29,9 +33,11 @@ export async function GET(request: NextRequest) {
   let posts: Awaited<ReturnType<typeof sweepPublishing>> = [];
   let tokens: Awaited<ReturnType<typeof refreshExpiringTokens>> = [];
   let connections: Awaited<ReturnType<typeof checkConnections>> = [];
+  let renders: Awaited<ReturnType<typeof sweepRenders>> = [];
   const areas = scoped ? (UUID.test(area) ? [area] : []) : null;
+  try { renders = await sweepRenders(db, dry, scoped ? only : null); } catch (e) { failures.push(`renders: ${e instanceof Error ? e.message : String(e)}`); }
   try { posts = await sweepPublishing(db, dry, scoped ? only : null); } catch (e) { failures.push(`sweep: ${e instanceof Error ? e.message : String(e)}`); }
   try { tokens = await refreshExpiringTokens(db, dry, areas); } catch (e) { failures.push(`tokens: ${e instanceof Error ? e.message : String(e)}`); }
   try { connections = await checkConnections(db, dry, areas); } catch (e) { failures.push(`connections: ${e instanceof Error ? e.message : String(e)}`); }
-  return NextResponse.json({ dry, posts, tokens, connections, failures });
+  return NextResponse.json({ dry, renders, posts, tokens, connections, failures });
 }

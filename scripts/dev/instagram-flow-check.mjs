@@ -11,7 +11,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { execFileSync } from "node:child_process";
 import { createHmac } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
@@ -73,6 +73,7 @@ try {
     { hook: "Hook seven", body: "Disconnected while in flight.", cta: null },
     { hook: "Hook eight", body: "Picture froze 10 s in (a 2026-09-19 iPhone file).", cta: null },
     { hook: "Hook nine", body: "Instagram rejects the token at post time.", cta: null },
+    { hook: "Hook ten", body: "The render fails (test hook), the original is posted instead.", cta: null },
   ];
   for (let i = 0; i < scripts.length; i++) {
     const path = `${created.userId}/mock-${ts}-${i}.mp4`;
@@ -83,7 +84,17 @@ try {
     if (vErr) throw new Error(vErr.message);
     created.videoIds.push(v.id);
   }
-  const [A, B, C, D, E, F, G, H, I] = created.videoIds;
+  const [A, B, C, D, E, F, G, H, I, J] = created.videoIds;
+  // The render step (2026-11-01). A has timed words, three cues and a headline, like a
+  // transcribed video; C has captions off and no headline (the sound is still evened out,
+  // the picture copied); E posts the original (render skipped), so its size is checked as
+  // before; J's headline trips the test hook (RENDER_TEST_HOOKS=1 in the build) so its render fails.
+  const WORDS = [["Hook", 0.5, 0.8], ["one,", 0.85, 1.1], ["a", 1.2, 1.3], ["short", 1.35, 1.6], ["word.", 1.62, 1.8], ["Second", 1.9, 2.3], ["line", 2.35, 2.6], ["here.", 2.65, 2.9], ["Third", 3.05, 3.4], ["one.", 3.45, 3.7]].map(([t, s, e]) => ({ t, s, e }));
+  const CUES = [{ s: 0.4, e: 1.88, text: "Hook one, a short word." }, { s: 1.9, e: 3.03, text: "Second line here." }, { s: 3.05, e: 3.95, text: "Third one." }];
+  await db.from("videos").update({ transcript: "Hook one, a short word. Second line here. Third one.", transcript_language: "eng", transcript_words: WORDS, caption_cues: CUES, headline: "Mock headline", ai_headline: "Mock headline" }).eq("id", A);
+  await db.from("videos").update({ captions_on: false, headline: null }).eq("id", C);
+  await db.from("videos").update({ render_state: "skipped" }).eq("id", E);
+  await db.from("videos").update({ headline: "RENDERFAIL" }).eq("id", J);
   await db.from("videos").update({ file_size: 400 * 1048576 }).eq("id", E);
   await db.from("videos").update({ storage_path: null, file_purged_at: new Date().toISOString() }).eq("id", F);
   // H looks like one of the frozen event recordings after scripts/dev/picture-backfill.mjs stored its check.
@@ -103,6 +114,8 @@ try {
   if (lErr) throw new Error(lErr.message);
   browser = await chromium.launch({ channel: "chrome", headless: true });
   const page = await (await browser.newContext()).newPage();
+  page.on("pageerror", (err) => console.log(`      page error: ${err.message}`));
+  page.on("console", (msg) => { if (msg.type() === "error") console.log(`      console error: ${msg.text().slice(0, 300)}`); });
   await page.goto(`${base}/auth/confirm?token_hash=${link.properties.hashed_token}&type=magiclink&next=/review`);
   await page.waitForURL(/\/review/);
   check("signed in on /review", (await page.textContent("body")).includes("Instagram accounts"));
@@ -134,7 +147,7 @@ try {
   const dash = await page.textContent("body");
   check("dashboard shows the team's Instagram numbers from the mock", dash.includes("@atl_mock_team") && dash.includes("1,234") && dash.includes("Followers") && dash.includes("57 likes"), dash.includes("@atl_mock_team") ? "" : dash.slice(0, 300));
   check("dashboard shows the last 30 days' reach and views (insights scope granted)", dash.includes("4,321 accounts reached") && dash.includes("9,876 views"));
-  check("dashboard shows the team's own numbers", /9 videos sent to the team in the last 30 days/.test(dash) && /2 people on the team/.test(dash));
+  check("dashboard shows the team's own numbers", /10 videos sent to the team in the last 30 days/.test(dash) && /2 people on the team/.test(dash));
   const statsRow = (await db.from("instagram_stats").select("*").eq("area_id", created.areaId).maybeSingle()).data;
   check("numbers are cached in instagram_stats with per-post views", statsRow?.profile?.followers === 1234 && (statsRow.media ?? []).length >= 2 && statsRow.insights?.reach === 4321 && statsRow.media[0].views === 120 && !!statsRow.succeeded_at && !statsRow.error, JSON.stringify(statsRow)?.slice(0, 200));
   const pub = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
@@ -186,6 +199,17 @@ try {
   check("caption box is prefilled with the script", (await captionBox.inputValue()).includes("A short word about faith."));
   const collabBox = page.getByPlaceholder("@username, up to 3");
   check("collaborators box is prefilled with the team's usual", (await collabBox.inputValue()) === "@atl_friend, @second.one", await collabBox.inputValue());
+  // The captions card: the words to check, the headline, a fix that must be saved before posting.
+  check("the captions card shows the lines and the headline", (await page.textContent("body")).includes("Check the words (3 lines") && (await page.getByPlaceholder("A few words at the top, or nothing").inputValue()) === "Mock headline");
+  await page.getByText(/^Check the words/).click();
+  await page.getByLabel("Caption line 1").fill("Hook one, a fixed word.");
+  const noteShown = await page.getByText("Save the captions first").waitFor({ timeout: 5000 }).then(() => true, () => false);
+  check("an unsaved fix holds the post button", noteShown && await page.getByRole("button", { name: /Approve and post to @atl_mock_team/ }).isDisabled(), noteShown ? "note shown" : `no note; body: ${(await page.textContent("body")).replace(/\s+/g, " ").slice(0, 300)}`);
+  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByText("Saved", { exact: true }).waitFor({ timeout: 15_000 });
+  const cuesA = (await video(A, "caption_cues, captions_on, headline")).caption_cues;
+  check("the fixed line is saved with its timing kept", cuesA?.[0]?.text === "Hook one, a fixed word." && cuesA[0].s === 0.4 && cuesA.length === 3, JSON.stringify(cuesA?.[0]));
+  check("the post button is back", !(await page.getByRole("button", { name: /Approve and post to @atl_mock_team/ }).isDisabled()));
   await collabBox.fill("@bad name!");
   await page.getByRole("button", { name: /Approve and post to @atl_mock_team/ }).click();
   await page.getByText(/is not an Instagram username/).waitFor({ timeout: 15_000 });
@@ -196,8 +220,9 @@ try {
   await page.getByText("Not posted:").waitFor({ timeout: 40_000 });
   check("Instagram refusing the invite shows its reason and the hint", /Invalid parameter: collaborators[\s\S]*clear the collaborators box/.test(await page.textContent("body")));
   await page.getByRole("button", { name: /Try again on @atl_mock_team/ }).click();
-  await page.getByText("Sending to Instagram").waitFor({ timeout: 15_000 });
-  check("post goes in flight", true);
+  // The rendered file is current, so the retry goes straight to Instagram (the page's "Not posted" from the refusal is still on screen for a moment).
+  const started = await until(async () => { const s = (await video(A, "publish_state")).publish_state; return s === "processing" || s === "published" ? s : null; }, 40_000);
+  check("post goes in flight", !!started, started ?? JSON.stringify(await video(A, "publish_state, publish_error, render_state, render_error")));
   await page.getByText(/^Posted /).waitFor({ timeout: 40_000 });
   const openPost = await page.getByRole("link", { name: "Open post" }).getAttribute("href");
   check("page shows Posted with the permalink", /instagram\.com\/reel\/MOCK/.test(openPost ?? ""), openPost ?? "");
@@ -206,10 +231,26 @@ try {
   check("caption posted is the script", vA?.post_caption === "Hook one\n\nA short word about faith.\n\nLearn more at the link.");
   check("collaborators stored with the post", JSON.stringify(vA?.post_collaborators) === JSON.stringify(["atl_friend", "second.one"]), JSON.stringify(vA?.post_collaborators));
   const mockState = await (await fetch(`${mock}/__state`)).json();
-  check("mock fetched the signed file URL", mockState.fetched.some((f) => f.status === 200 && Number(f.length) === bytes.length), JSON.stringify(mockState.fetched[0]));
+  const rA = await video(A, "render_state, render_path, render_key, render_meta, render_attempts");
+  check("mock fetched the signed file URL of the rendered file in full", mockState.fetched.some((f) => f.status === 200 && Number(f.length) === rA?.render_meta?.bytes), JSON.stringify({ fetched: mockState.fetched[0], rendered: rA?.render_meta?.bytes }));
   const cA = mockState.containers.find((c) => /^Hook one/.test(c.caption));
   check("mock received the collaborator invites with the container", JSON.stringify(cA?.collaborators) === JSON.stringify(["atl_friend", "second.one"]), JSON.stringify(cA));
   check("posted card names the invitees", (await page.textContent("body")).includes("Collaborator invite sent to @atl_friend, @second.one"));
+  // The render: the captions and the headline were drawn into a new file, and that file is what Instagram fetched.
+  check("video A was rendered with its three cues and the headline", rA?.render_state === "done" && /-captioned\.mp4$/.test(rA.render_path ?? "") && rA.render_meta?.cues === 3 && rA.render_meta?.headline === true && rA.render_meta?.videoCopied === false && rA.render_meta?.bytes > 1000 && rA.render_meta?.width === 360 && rA.render_meta?.height === 640, JSON.stringify(rA?.render_meta));
+  check("the loudness was measured and normalised", typeof rA?.render_meta?.loudness?.input === "number" && rA.render_meta.loudness.target === -16, JSON.stringify(rA?.render_meta?.loudness));
+  check("Instagram fetched the rendered file, not the original", mockState.fetched.some((f) => /-captioned\.mp4/.test(f.url)), JSON.stringify(mockState.fetched.map((f) => f.url.split("/").pop())));
+  check("posted card says the captions and the headline were drawn in", (await page.textContent("body")).includes("The captions and the headline were drawn into the posted video."));
+  // Look at a frame: the caption box and the headline box darken their regions of the test pattern.
+  const { data: signedA } = await db.storage.from("videos").createSignedUrl(rA.render_path, 600);
+  const renderedA = join(tmp, "rendered-a.mp4");
+  writeFileSync(renderedA, Buffer.from(await (await fetch(signedA.signedUrl)).arrayBuffer()));
+  execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-ss", "2", "-i", file, "-frames:v", "1", join(tmp, "orig.png")]);
+  execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-ss", "2", "-i", renderedA, "-frames:v", "1", join(tmp, "rendered.png")]);
+  execFileSync("cp", [join(tmp, "rendered.png"), join(shots, "rendered-frame.png")]);
+  const lum = execFileSync("python3", ["-c", "import sys\nfrom PIL import Image, ImageStat\no = Image.open(sys.argv[1]).convert('L'); r = Image.open(sys.argv[2]).convert('L')\nm = lambda i, b: ImageStat.Stat(i.crop(b)).mean[0]\ncap = (90, 448, 270, 476); head = (90, 106, 270, 137)\nprint(round(m(o, cap)), round(m(r, cap)), round(m(o, head)), round(m(r, head)))", join(tmp, "orig.png"), join(tmp, "rendered.png")]).toString().trim().split(" ").map(Number);
+  check("the caption box darkens its region of the frame at 2 s", lum[0] > 30 && lum[1] < 0.8 * lum[0], `original ${lum[0]}, rendered ${lum[1]}`);
+  check("the headline box darkens its region at the top", lum[2] > 30 && lum[3] < 0.8 * lum[2], `original ${lum[2]}, rendered ${lum[3]}`);
 
   // A file Instagram refuses: the page says why and offers a retry; the video stays approved.
   await page.goto(`${base}/review/${B}`);
@@ -221,6 +262,19 @@ try {
   check("manual fallback offered", bodyB.includes("Post it by hand instead"));
   const vB = await video(B, "status, publish_state, publish_error, publish_attempts");
   check("video B stays approved with the error", vB?.status === "approved" && vB.publish_state === "failed" && /not supported/.test(vB.publish_error ?? "") && vB.publish_attempts === 1, JSON.stringify(vB));
+
+  // The render fails: the post fails with the reason, and the lead can post the original file instead.
+  await page.goto(`${base}/review/${J}`);
+  await page.getByRole("button", { name: /Approve and post to @atl_mock_team/ }).click();
+  await page.getByText("Not posted:").waitFor({ timeout: 40_000 });
+  const bodyJ = await page.textContent("body");
+  check("a failed render fails the post with its reason", bodyJ.includes("Could not add the captions to the video") && bodyJ.includes("test hook"));
+  const vJ = await video(J, "status, publish_state, render_state, render_error, render_attempts");
+  check("video J stays approved, render failed and counted", vJ?.status === "approved" && vJ.publish_state === "failed" && vJ.render_state === "failed" && /test hook/.test(vJ.render_error ?? "") && vJ.render_attempts === 1, JSON.stringify(vJ));
+  await page.getByRole("button", { name: /Post the original file instead/ }).click();
+  await page.getByText(/^Posted /).waitFor({ timeout: 40_000 });
+  const vJ2 = await video(J, "status, render_state, post_media_id");
+  check("the original file was posted instead", vJ2?.status === "posted" && vJ2.render_state === "skipped" && !!vJ2.post_media_id && !(await (await fetch(`${mock}/__state`)).json()).fetched.some((f) => /mock-.*-9-captioned/.test(f.url)), JSON.stringify(vJ2));
 
   // The lead leaves the page: the cron finishes the post.
   await page.goto(`${base}/review/${C}`);
@@ -235,6 +289,8 @@ try {
   const run2 = await cron();
   const vC = await video(C, "status, publish_state, post_url");
   check("cron run 2 publishes it", vC?.status === "posted" && vC.publish_state === "published" && /MOCK/.test(vC.post_url ?? ""), JSON.stringify({ vC, run2: run2.posts }));
+  const rC = await video(C, "render_state, render_meta");
+  check("with captions off and no headline the picture was copied and only the sound evened out", rC?.render_state === "done" && rC.render_meta?.cues === 0 && rC.render_meta?.headline === false && rC.render_meta?.videoCopied === true, JSON.stringify(rC?.render_meta));
   check("cron reports no token work yet", Array.isArray(run2.tokens) && run2.tokens.length === 0, JSON.stringify(run2.tokens));
 
   // Token refresh: a token close to expiry and old enough is refreshed by the cron.
@@ -323,7 +379,9 @@ try {
   // A post that was queued but never started (the action died mid-way): the cron starts and finishes it.
   await db.from("videos").update({ status: "approved", reviewed_by: created.userId, reviewed_at: new Date().toISOString(), publish_state: "queued", publish_requested_at: new Date().toISOString(), publish_requested_by: created.userId }).eq("id", D);
   const q1 = await cron();
-  check("cron starts a queued post", q1.posts?.some((p) => p.id === D && p.before === "queued" && p.after?.state === "processing"), JSON.stringify(q1.posts));
+  check("cron queues the render for a queued post", q1.posts?.some((p) => p.id === D && p.before === "queued" && p.after?.rendering === true) && (await video(D, "render_state")).render_state === "queued", JSON.stringify(q1.posts));
+  const q2 = await cron();
+  check("the next run renders it and starts the post", q2.renders?.some((r) => r.id === D && /^rendered \(0 cues/.test(r.result) && /post processing/.test(r.result)), JSON.stringify(q2.renders));
   await cron(); // IN_PROGRESS
   await cron(); // FINISHED -> published
   const vD = await video(D, "status, publish_state, post_url, posted_by");
@@ -425,10 +483,12 @@ try {
 } catch (e) {
   failed++;
   console.log(`FAIL  threw: ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
+  try { const pages = browser?.contexts().flatMap((c) => c.pages()) ?? []; for (const [i, pg] of pages.entries()) { await pg.screenshot({ path: join(process.argv[4] ?? tmp, `shots/threw-${i}.png`), fullPage: true }); console.log(`      page ${i}: ${pg.url()}`); } } catch { /* no screenshot */ }
 } finally {
   await browser?.close().catch(() => {});
   if (created.videoIds.length) await db.from("videos").delete().in("id", created.videoIds);
   if (created.paths.length) await db.storage.from("videos").remove(created.paths);
+  if (created.userId) { const { data: left } = await db.storage.from("videos").list(created.userId, { limit: 100 }); const names = (left ?? []).map((f) => `${created.userId}/${f.name}`); if (names.length) await db.storage.from("videos").remove(names); }
   if (created.areaId) await db.from("areas").delete().eq("id", created.areaId);
   if (created.userId) await db.auth.admin.deleteUser(created.userId);
   if (created.userId2) await db.auth.admin.deleteUser(created.userId2);

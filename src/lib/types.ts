@@ -35,6 +35,7 @@ export type Area = {
   created_at: string;
 };
 
+import type { Cue, Word } from "@/lib/caption-cues";
 import type { CaptureMeta } from "@/lib/capture-meta";
 import type { UploadGoal } from "@/lib/goals";
 
@@ -84,9 +85,24 @@ export type Video = {
   caption_attempts: number;
   caption_error: string | null;
   captioned_at: string | null;
+  /** Captions drawn into the posted video (2026-11-01). See src/lib/caption-cues.ts and src/lib/render.ts. */
+  transcript_words: Word[] | null;
+  caption_cues: Cue[] | null;
+  captions_on: boolean;
+  headline: string | null;
+  ai_headline: string | null;
+  render_state: RenderState | null;
+  render_path: string | null;
+  render_key: string | null;
+  render_error: string | null;
+  render_attempts: number;
+  render_started_at: string | null;
+  render_meta: RenderMeta | null;
   created_at: string;
 };
 export type PublishState = "queued" | "processing" | "published" | "failed";
+export type RenderState = "queued" | "rendering" | "done" | "failed" | "skipped";
+export type RenderMeta = { cues: number; headline: boolean; width: number; height: number; seconds: number | null; bytes: number; encodeMs: number; videoCopied: boolean; loudness: { input: number | null; target: number } | null; font: string; note?: string };
 export type CaptionState = "done" | "failed" | "skipped";
 
 export type AreaSummary = Pick<Area, "id" | "name" | "language" | "instagram_handle" | "instagram_user_id" | "instagram_connected_at" | "instagram_lost_at" | "instagram_lost_reason" | "instagram_collaborators">;

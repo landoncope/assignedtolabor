@@ -30,6 +30,8 @@ const cron = async (ids, q = "") => { if (!ids.length) throw new Error("cron() n
 const cfg = (q) => fetch(`${mock}/__config?${q}`);
 const mockState = async () => (await fetch(`${mock}/__state`)).json();
 const TRANSCRIPT_START = "Kumusta po.";
+// The mock's whole transcript (scripts/dev/captions-mock.mjs), for the word count and the old video.
+const TRANSCRIPT = "Kumusta po. Gusto ko lang ibahagi na ang panalangin ang nagbigay sa akin ng kapayapaan nang mawalan ako ng trabaho. Hindi ako nag-iisa. Subukan ninyo ring manalangin ngayong gabi.";
 
 const created = { userId: null, areaId: null, areaId2: null, videoIds: [], paths: [] };
 const tmp = mkdtempSync(join(tmpdir(), "captions-check-"));
@@ -89,17 +91,34 @@ try {
   const vA = await video(A.id, "transcript, transcript_language, transcript_confidence, ai_caption, ai_summary, caption_state, caption_attempts, caption_error, captioned_at");
   check("A has the transcript, language and confidence", vA?.transcript?.startsWith(TRANSCRIPT_START) && vA.transcript_language === "tgl" && Math.abs(vA.transcript_confidence - 0.98) < 0.001, JSON.stringify({ lang: vA?.transcript_language, conf: vA?.transcript_confidence }));
   check("A has the caption and the summary, state done", vA?.ai_caption?.includes("Hindi ako nag-iisa") && vA.ai_summary?.includes("prayer") && vA.caption_state === "done" && !!vA.captioned_at && vA.caption_error === null && vA.caption_attempts === 0);
+  // The words with their times, the cues made from them, and the headline (2026-11-01).
+  const wA = await video(A.id, "transcript_words, caption_cues, ai_headline, headline");
+  check("A has the timed words (spacing entries dropped) and cues grouped from them", Array.isArray(wA?.transcript_words) && wA.transcript_words.length === TRANSCRIPT.split(" ").length && wA.transcript_words[0].t === "Kumusta" && Array.isArray(wA.caption_cues) && wA.caption_cues.length >= 3 && wA.caption_cues[0].text.startsWith("Kumusta po.") && wA.caption_cues[0].s < wA.caption_cues[0].e, JSON.stringify({ words: wA?.transcript_words?.length, cues: wA?.caption_cues?.length, first: wA?.caption_cues?.[0] }));
+  check("A has the suggested headline, adopted as the headline", wA?.ai_headline === "Hindi ako nag-iisa" && wA.headline === "Hindi ako nag-iisa");
   const vC = await video(C.id, "caption_state, caption_error, transcript");
   check("C (purged) is skipped without any request", vC?.caption_state === "skipped" && /no longer stored/.test(vC.caption_error ?? "") && vC.transcript === null, vC?.caption_error);
   let st = await mockState();
   check("two transcriptions, the approved video first", st.stt.length === 2 && st.stt[0].source_url?.includes(B.path) && st.stt[1].source_url?.includes(A.path), st.stt.map((c) => c.source_url?.split("/").pop()?.split("?")[0]).join(","));
-  check("transcription asked for scribe_v2 without diarization or audio events", st.stt.every((c) => c.model_id === "scribe_v2" && c.diarize === "false" && c.tag_audio_events === "false"));
+  check("transcription asked for scribe_v2 without diarization or audio events, with word times", st.stt.every((c) => c.model_id === "scribe_v2" && c.diarize === "false" && c.tag_audio_events === "false" && c.timestamps_granularity === "word"));
   check("mock fetched the signed file URL in full", st.fetched.length === 2 && st.fetched.every((f) => f.status === 200 && f.bytes === bytes.length), JSON.stringify(st.fetched[0]));
   const claudeA = st.claude[1];
   check("Claude got the transcript, the team, the name and the script", claudeA?.user.includes(TRANSCRIPT_START) && claudeA.user.includes("Captions Mock Team (Klingon)") && claudeA.user.includes("Speaker's first name: Maria") && claudeA.user.includes("A short word about faith.") && claudeA.user.includes("Language detected in the audio: tgl"), claudeA?.user.slice(0, 200));
   check("Claude got the model and a system prompt", claudeA?.model === "claude-sonnet-5-5" && claudeA.systemChars > 500, claudeA?.model);
   check("the approved video without a script says so", st.claude[0]?.user.includes("(none; they improvised)") && st.claude[0].user.includes("Captions Mock Team B (Vulcan)"));
   check("nothing left to do", (await cron([A.id, B.id, C.id])).results.length === 0);
+
+  // A video captioned before 2026-11-01: a transcript but no timed words and no headline.
+  // The sweep transcribes it again for the words (approved videos only) and asks for a headline.
+  const R = await addVideo({ script: null, status: "approved", reviewed_by: created.userId, reviewed_at: new Date().toISOString(), transcript: TRANSCRIPT, transcript_language: "tgl", transcript_confidence: 0.9, ai_caption: "An old caption", ai_summary: "An old summary", caption_state: "done", captioned_at: new Date().toISOString() });
+  const dryR = await cron([R.id], "&dry=1");
+  check("dry run: an old approved video would be transcribed again for the words and given a headline", dryR.results.some((r) => r.id === R.id && /word times/.test(r.detail)) && dryR.results.some((r) => r.id === R.id && /headline/.test(r.detail)), JSON.stringify(dryR.results));
+  const sttBeforeR = (await mockState()).stt.length;
+  const runR = await cron([R.id]);
+  check("sweep: the old video is retimed and headlined", runR.results.some((r) => r.id === R.id && r.result === "retimed" && /cues/.test(r.detail)) && runR.results.some((r) => r.id === R.id && r.result === "headlined"), JSON.stringify(runR.results));
+  const vR = await video(R.id, "transcript, transcript_words, caption_cues, ai_caption, ai_headline, headline, caption_state");
+  check("the old video keeps its caption and gains the words, cues and headline", vR?.ai_caption === "An old caption" && vR.caption_state === "done" && Array.isArray(vR.transcript_words) && vR.transcript_words.length > 10 && Array.isArray(vR.caption_cues) && vR.caption_cues.length >= 3 && vR.ai_headline === "Hindi ako nag-iisa" && vR.headline === "Hindi ako nag-iisa", JSON.stringify({ words: vR?.transcript_words?.length, cues: vR?.caption_cues?.length, headline: vR?.headline }));
+  check("that cost one transcription", (await mockState()).stt.length === sttBeforeR + 1);
+  check("nothing left to do for it", (await cron([R.id])).results.length === 0);
 
   // The review pages, signed in through the same link our emails use.
   const { data: link, error: lErr } = await db.auth.admin.generateLink({ type: "magiclink", email });

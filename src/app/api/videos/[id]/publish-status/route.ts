@@ -13,13 +13,15 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/videos/[id]/pub
   const viewer = await getViewer();
   if (!viewer || viewer.isAnonymous) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const db = createAdminClient();
-  const { data: v, error } = await db.from("videos").select("id, area_id, publish_state, publish_error, post_url").eq("id", id).maybeSingle();
+  const { data: v, error } = await db.from("videos").select("id, area_id, publish_state, publish_error, post_url, render_state, render_error").eq("id", id).maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!v) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const mayManage = viewer.isAdmin || (v.area_id !== null && viewer.managedAreaIds.includes(v.area_id));
   if (!mayManage) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  // The render step's state rides along, so the page can say "adding captions" and start the render route.
+  const render = { state: v.render_state, error: v.render_error };
   if (v.publish_state === "queued" || v.publish_state === "processing") {
-    return NextResponse.json(await advancePublish(db, id));
+    return NextResponse.json({ ...(await advancePublish(db, id)), render });
   }
-  return NextResponse.json({ state: v.publish_state, error: v.publish_error, postUrl: v.post_url });
+  return NextResponse.json({ state: v.publish_state, error: v.publish_error, postUrl: v.post_url, render });
 }

@@ -6,6 +6,7 @@ import VideoPlayer from "@/components/VideoPlayer";
 import { requireManager } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { captionsConfigured } from "@/lib/captions";
+import { isCueList } from "@/lib/caption-cues";
 import { describeCapture, pictureWarning } from "@/lib/capture-meta";
 import { AREA_SUMMARY_COLS, areaLabel, STATUS_LABEL, type Area, type VideoWithArea } from "@/lib/types";
 import ReviewActions from "./ReviewActions";
@@ -30,6 +31,12 @@ export default async function ReviewVideoPage({ params }: PageProps<"/review/[id
   const v = video as VideoWithArea;
   const script = v.script;
   const caption = [script?.hook, script?.body, script?.cta].filter(Boolean).join("\n\n");
+  // What the render step draws (2026-11-01), previewed over the player: for a video still to
+  // be posted, its current cues and headline; for a posted one, only what was drawn into it.
+  const cues = v.captions_on && isCueList(v.caption_cues) ? v.caption_cues : [];
+  const overlay = v.status === "posted"
+    ? (v.render_meta ? { cues: v.render_meta.cues ? cues : [], headline: v.render_meta.headline ? (v.headline ?? null) : null } : null)
+    : v.status === "rejected" ? null : { cues, headline: (v.headline ?? v.ai_headline ?? "").trim() || null };
 
   return (
     <>
@@ -38,7 +45,7 @@ export default async function ReviewVideoPage({ params }: PageProps<"/review/[id
         <Link href="/review" className="text-sm text-muted hover:text-foreground">‹ Back to review</Link>
         <div className="mt-4 grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <div>
-            <VideoPlayer videoId={v.id} poster={v.thumbnail} />
+            <VideoPlayer videoId={v.id} poster={v.thumbnail} overlay={overlay} />
           </div>
           <div className="flex flex-col gap-4">
             <div>
@@ -89,7 +96,7 @@ export default async function ReviewVideoPage({ params }: PageProps<"/review/[id
             )}
             {v.uploader_note && <div className="card"><div className="label">Note from uploader</div><p className="text-sm">{v.uploader_note}</p></div>}
             {v.rejection_note && <div className="card"><div className="label">Reason not selected</div><p className="text-sm">{v.rejection_note}</p></div>}
-            <ReviewActions video={v} areas={(areas ?? []) as Area[]} caption={caption} isAdmin={viewer.isAdmin} canConnect={viewer.isAdmin || (!!v.area_id && viewer.managedAreaIds.includes(v.area_id))} />
+            <ReviewActions video={v} areas={(areas ?? []) as Area[]} caption={caption} isAdmin={viewer.isAdmin} canConnect={viewer.isAdmin || (!!v.area_id && viewer.managedAreaIds.includes(v.area_id))} canPrepare={captionsConfigured() && !!v.storage_path && !v.file_purged_at} />
           </div>
         </div>
       </main>

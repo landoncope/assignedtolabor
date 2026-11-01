@@ -10,6 +10,9 @@ import { createServer } from "node:http";
 
 const port = Number(process.argv[2] ?? 3997);
 const TRANSCRIPT = "Kumusta po. Gusto ko lang ibahagi na ang panalangin ang nagbigay sa akin ng kapayapaan nang mawalan ako ng trabaho. Hindi ako nag-iisa. Subukan ninyo ring manalangin ngayong gabi.";
+// Scribe's words with times (2026-11-01): one every 0.3 s, with a spacing entry between, like the real answer.
+const WORDS = TRANSCRIPT.split(" ").flatMap((text, i) => [{ text, start: 0.5 + i * 0.3, end: 0.5 + i * 0.3 + 0.25, type: "word" }, { text: " ", start: 0.75 + i * 0.3, end: 0.8 + i * 0.3, type: "spacing" }]);
+const HEADLINE = "Hindi ako nag-iisa";
 const state = { stt: [], claude: [], fetched: [], next: { stt: null, claude: null } };
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 const json = (res, status, body) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
@@ -31,7 +34,7 @@ createServer(async (req, res) => {
   if (p === "/v1/speech-to-text" && req.method === "POST") {
     if (!req.headers["xi-api-key"]) return json(res, 401, { detail: { status: "missing_api_key", message: "No API key" } });
     const body = await readBody(req);
-    const call = { model_id: field(body, "model_id"), source_url: field(body, "source_url"), diarize: field(body, "diarize"), tag_audio_events: field(body, "tag_audio_events") };
+    const call = { model_id: field(body, "model_id"), source_url: field(body, "source_url"), diarize: field(body, "diarize"), tag_audio_events: field(body, "tag_audio_events"), timestamps_granularity: field(body, "timestamps_granularity") };
     state.stt.push(call);
     const mode = state.next.stt; state.next.stt = null;
     if (mode === "quota") return json(res, 402, { detail: { status: "quota_exceeded", message: "You have exceeded your transcription quota for this period." } });
@@ -45,7 +48,7 @@ createServer(async (req, res) => {
       return json(res, 422, { detail: [{ loc: ["body", "source_url"], msg: `Could not download the file (${e.message})`, type: "value_error" }] });
     }
     if (mode === "empty") return json(res, 200, { language_code: "eng", language_probability: 0.2, text: "", words: [], audio_duration_secs: 2 });
-    return json(res, 200, { language_code: "tgl", language_probability: 0.98, text: TRANSCRIPT, words: [], audio_duration_secs: 8, transcription_id: `mock-${state.stt.length}` });
+    return json(res, 200, { language_code: "tgl", language_probability: 0.98, text: TRANSCRIPT, words: WORDS, audio_duration_secs: 8, transcription_id: `mock-${state.stt.length}` });
   }
 
   if (p === "/v1/messages" && req.method === "POST") {
@@ -57,7 +60,7 @@ createServer(async (req, res) => {
     if (mode === "overloaded") return json(res, 529, { type: "error", error: { type: "overloaded_error", message: "Overloaded" } });
     const text = mode === "garbage"
       ? "I'm sorry, I can't help with that."
-      : JSON.stringify({ caption: "“Hindi ako nag-iisa.” Ibinahagi ni Maria kung paano siya binigyan ng kapayapaan ng panalangin nang mawalan siya ng trabaho. Subukan ninyo ring manalangin ngayong gabi.\n\n#panalangin #pananampalataya #LiwanagNiKristo #Pilipinas", summary: "Maria says prayer gave her peace after losing her job and invites viewers to pray tonight." });
+      : JSON.stringify({ caption: "“Hindi ako nag-iisa.” Ibinahagi ni Maria kung paano siya binigyan ng kapayapaan ng panalangin nang mawalan siya ng trabaho. Subukan ninyo ring manalangin ngayong gabi.\n\n#panalangin #pananampalataya #LiwanagNiKristo #Pilipinas", summary: "Maria says prayer gave her peace after losing her job and invites viewers to pray tonight.", headline: HEADLINE });
     return json(res, 200, { id: `msg_mock_${state.claude.length}`, type: "message", role: "assistant", model: b.model, content: [{ type: "text", text }], stop_reason: "end_turn", usage: { input_tokens: 900, output_tokens: 120 } });
   }
 
