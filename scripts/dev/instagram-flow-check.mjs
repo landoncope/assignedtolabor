@@ -237,7 +237,7 @@ try {
   check("mock received the collaborator invites with the container", JSON.stringify(cA?.collaborators) === JSON.stringify(["atl_friend", "second.one"]), JSON.stringify(cA));
   check("posted card names the invitees", (await page.textContent("body")).includes("Collaborator invite sent to @atl_friend, @second.one"));
   // The render: the captions and the headline were drawn into a new file, and that file is what Instagram fetched.
-  check("video A was rendered with its three cues and the headline", rA?.render_state === "done" && /-captioned\.mp4$/.test(rA.render_path ?? "") && rA.render_meta?.cues === 3 && rA.render_meta?.headline === true && rA.render_meta?.videoCopied === false && rA.render_meta?.bytes > 1000 && rA.render_meta?.width === 360 && rA.render_meta?.height === 640, JSON.stringify(rA?.render_meta));
+  check("video A was rendered with its three cues and the headline, in Inter", rA?.render_state === "done" && /-captioned\.mp4$/.test(rA.render_path ?? "") && rA.render_meta?.cues === 3 && rA.render_meta?.headline === true && rA.render_meta?.videoCopied === false && rA.render_meta?.bytes > 1000 && rA.render_meta?.width === 360 && rA.render_meta?.height === 640 && rA.render_meta?.font === "Inter", JSON.stringify(rA?.render_meta));
   check("the loudness was measured and normalised", typeof rA?.render_meta?.loudness?.input === "number" && rA.render_meta.loudness.target === -16, JSON.stringify(rA?.render_meta?.loudness));
   check("Instagram fetched the rendered file, not the original", mockState.fetched.some((f) => /-captioned\.mp4/.test(f.url)), JSON.stringify(mockState.fetched.map((f) => f.url.split("/").pop())));
   check("posted card says the captions and the headline were drawn in", (await page.textContent("body")).includes("The captions and the headline were drawn into the posted video."));
@@ -248,7 +248,7 @@ try {
   execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-ss", "2", "-i", file, "-frames:v", "1", join(tmp, "orig.png")]);
   execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-ss", "2", "-i", renderedA, "-frames:v", "1", join(tmp, "rendered.png")]);
   execFileSync("cp", [join(tmp, "rendered.png"), join(shots, "rendered-frame.png")]);
-  const lum = execFileSync("python3", ["-c", "import sys\nfrom PIL import Image, ImageStat\no = Image.open(sys.argv[1]).convert('L'); r = Image.open(sys.argv[2]).convert('L')\nm = lambda i, b: ImageStat.Stat(i.crop(b)).mean[0]\ncap = (90, 466, 270, 495); head = (90, 70, 270, 104)\nprint(round(m(o, cap)), round(m(r, cap)), round(m(o, head)), round(m(r, head)))", join(tmp, "orig.png"), join(tmp, "rendered.png")]).toString().trim().split(" ").map(Number);
+  const lum = execFileSync("python3", ["-c", "import sys\nfrom PIL import Image, ImageStat\no = Image.open(sys.argv[1]).convert('L'); r = Image.open(sys.argv[2]).convert('L')\nm = lambda i, b: ImageStat.Stat(i.crop(b)).mean[0]\ncap = (90, 464, 270, 494); head = (90, 72, 270, 106)\nprint(round(m(o, cap)), round(m(r, cap)), round(m(o, head)), round(m(r, head)))", join(tmp, "orig.png"), join(tmp, "rendered.png")]).toString().trim().split(" ").map(Number);
   check("the caption box darkens its region of the frame at 2 s", lum[0] > 30 && lum[1] < 0.8 * lum[0], `original ${lum[0]}, rendered ${lum[1]}`);
   check("the headline box darkens its region at the top", lum[2] > 30 && lum[3] < 0.8 * lum[2], `original ${lum[2]}, rendered ${lum[3]}`);
 

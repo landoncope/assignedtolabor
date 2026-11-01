@@ -37,8 +37,8 @@ export default function VideoPlayer({ videoId, poster, endpoint, overlay }: { vi
 /**
  * Finds where the picture sits inside the <video> box (it is letterboxed when the box and
  * the picture differ in shape) and draws the current cue and the headline over it, placed
- * and sized like the render does (src/lib/render.ts buildAss: captions 64 px white on half
- * black ending at 78% of the height; the headline 80 px white on darker black from 10%).
+ * and sized like the render does (src/lib/render.ts buildAss: Inter Bold, captions 72 px
+ * white on half black ending at 78% of the height; the headline 92 px on darker black from 10%).
  */
 function WithOverlay({ overlay, children }: { overlay: Overlay; children: React.ReactNode }) {
   const box = useRef<HTMLDivElement>(null);
@@ -62,14 +62,14 @@ function WithOverlay({ overlay, children }: { overlay: Overlay; children: React.
   }, [overlay]);
   const cue = cueAt(overlay.cues, t);
   const k = rect ? rect.width / 1080 : 0;
-  const boxStyle = (size: number, title: boolean): React.CSSProperties => ({ fontSize: size * k, lineHeight: 1.22, padding: `${18 * k}px ${22 * k}px`, background: title ? "rgba(0,0,0,0.6)" : "rgba(0,0,0,0.5)", color: "#fff", fontWeight: 700, textAlign: "center", maxWidth: `${(1080 - 200) * k}px`, textShadow: `${2 * k}px ${2 * k}px 0 rgba(0,0,0,0.6)` });
+  const boxStyle = (size: number, title: boolean): React.CSSProperties => ({ fontFamily: "Inter, system-ui, sans-serif", fontSize: size * k, lineHeight: 1.22, padding: `${18 * k}px ${22 * k}px`, background: title ? "rgba(0,0,0,0.6)" : "rgba(0,0,0,0.5)", color: "#fff", fontWeight: 700, textAlign: "center", maxWidth: `${(1080 - 200) * k}px`, textShadow: `${2 * k}px ${2 * k}px 0 rgba(0,0,0,0.6)` });
   return (
     <div ref={box} className="relative">
       {children}
       {rect && (
         <div className="pointer-events-none absolute" style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }} aria-hidden="true">
-          {overlay.headline && <div className="absolute left-0 right-0 flex justify-center" style={{ top: "10%" }}><div style={boxStyle(80, true)}>{overlay.headline}</div></div>}
-          {cue && <div className="absolute left-0 right-0 flex justify-center" style={{ bottom: "22%" }}><div style={boxStyle(64, false)}>{cue.text}</div></div>}
+          {overlay.headline && <div className="absolute left-0 right-0 flex justify-center" style={{ top: "10%" }}><div style={boxStyle(92, true)}>{overlay.headline}</div></div>}
+          {cue && <div className="absolute left-0 right-0 flex justify-center" style={{ bottom: "22%" }}><div style={boxStyle(72, false)}>{cue.text}</div></div>}
           <div className="absolute right-1 top-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white/80">Preview</div>
         </div>
       )}

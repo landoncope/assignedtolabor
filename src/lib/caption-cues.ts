@@ -15,8 +15,8 @@ export function noSpaces(lang: string | null | undefined): boolean {
   return !!lang && NO_SPACE.test(lang);
 }
 
-/** At most this many characters (two lines at the drawn size) or seconds in one cue. */
-const MAX_CHARS = 56;
+/** At most this many characters (two lines at the drawn size: Inter Bold 72 px on a 1080 frame fits about 22 a line) or seconds in one cue. */
+const MAX_CHARS = 44;
 const MAX_CHARS_CJK = 22;
 const MAX_SECONDS = 3.5;
 /** A cue appears a little before its first word and stays a little after its last. */

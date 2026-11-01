@@ -108,20 +108,19 @@ function assText(t: string): string {
   return t.replace(/[\r\n]+/g, " ").replace(/[{}\\]/g, "").replace(/\s+/g, " ").trim();
 }
 export function fontFor(lang: string | null | undefined): string {
-  return noSpaces(lang) ? "Noto Sans TC" : "Noto Sans";
+  return noSpaces(lang) ? "Noto Sans TC" : "Inter";
 }
 
 /**
- * Captions: white on a half-black box, bottom edge at 78% of the height (below the mouth
- * of a selfie, above Instagram's own caption area). Headline: larger, white on a darker
- * box, top edge at 10% (below the strip the app covers). Landon's feedback 2026-11-01:
- * title higher, captions lower, nothing coloured and a plain font; this is the interim
- * look while he picks from the style samples. Sizes follow the frame width, so every
- * clip looks the same. Colours are ASS &HAABBGGRR.
+ * The look Landon chose from seventeen samples (2026-11-01, sample 6): Inter Bold, white
+ * on black boxes, captions 72 px with the box ending at 78% of the height (below the mouth
+ * of a selfie, above Instagram's own caption area), the headline 92 px on a darker box
+ * with its top at 10% (below the strip the app covers). Sizes follow the frame width, so
+ * every clip looks the same. Colours are ASS &HAABBGGRR.
  */
 export function buildAss(cues: Cue[], headline: string | null, width: number, height: number, font: string, seconds: number | null): string {
   const k = width / 1080;
-  const capSize = Math.round(64 * k), headSize = Math.round(80 * k);
+  const capSize = Math.round(72 * k), headSize = Math.round(92 * k);
   const marginLR = Math.round(100 * k), pad = Math.round(18 * k);
   const capMarginV = Math.round(height * 0.22), headMarginV = Math.round(height * 0.10);
   const style = (name: string, size: number, text: string, back: string, align: number, marginV: number) =>

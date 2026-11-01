@@ -965,20 +965,25 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     binary and `assets/fonts/**` into the render route and the publish cron with
     `outputFileTracingIncludes`; if the deploy loses the mode bit the binary is copied
     to /tmp and made executable). The captions are an ASS file (`buildAss`: PlayRes =
-    the frame as displayed, rotation applied; style Caption 64 px on a 1080 px wide
-    frame, white, bold, BorderStyle 4 box at 50% black, bottom edge at 78% of the
-    height, below a selfie's mouth and above Instagram's caption area; style Headline
-    80 px, white on a 60% black box, top edge at 10%, below the strip the app covers.
-    Landon's feedback on the first look, 2026-11-01: title higher, captions lower, the
-    two visibly different, nothing coloured, a plain font; a gold-on-navy title was
-    tried and dropped; this is the interim look while he picks from the style samples
-    (17 frames of Ty's clip in ~/Downloads/atl-captions-sample/style-sheet.png and
-    style-sheet-2.png: Inter, Liberation Sans, Montserrat, Poppins, Noto Sans; boxes,
-    outlines, capitals, larger sizes; fonts and the generator in the session scratchpad,
-    `proto/style-samples*.mjs`). `RENDER_VERSION` 2 makes files rendered before it
-    stale, so the next post of such a video renders again) rendered by the
-    `subtitles` filter with `fontsdir=assets/fonts` (Noto Sans Bold; Noto Sans TC Bold
-    for Chinese, Japanese and Korean transcripts; OFL, licence in the folder). Loudness:
+    the frame as displayed, rotation applied; style Caption: Inter Bold 72 px on a
+    1080 px wide frame, white, BorderStyle 4 box at 50% black, bottom edge at 78% of
+    the height, below a selfie's mouth and above Instagram's caption area; style
+    Headline: 92 px, white on a 60% black box, top edge at 10%, below the strip the
+    app covers. **Landon chose this (sample 6) on 2026-11-01** from seventeen frames of
+    Ty's clip (Inter, Liberation Sans, Montserrat, Poppins, Noto Sans; boxes,
+    outlines, capitals, larger sizes; a private claude.ai page of them,
+    https://claude.ai/artifact/HfjNmgFwyYVHhFf29po47B, sheets in
+    ~/Downloads/atl-captions-sample/, the generator `proto/style-samples*.mjs` in the
+    session scratchpad), after a first Noto Sans look (title lower, captions higher)
+    and a gold-on-navy title were tried. His question, whether leads should get a few
+    looks to choose from: not now (Travis wants the lead's job light, one look keeps a
+    team's feed consistent, the lead already decides captions on/off and the
+    headline); a per-team preset is a small addition if a team asks. A cue holds at
+    most 44 characters (two lines at 72 px). `RENDER_VERSION` 3 makes files rendered
+    before it stale, so the next post of such a video renders again) rendered by the
+    `subtitles` filter with `fontsdir=assets/fonts` (Inter Bold since Landon's choice,
+    below; Noto Sans TC Bold for Chinese, Japanese and Korean transcripts; both OFL,
+    licences in the folder). Loudness:
     a first `loudnorm` pass measures (audio only, fast), the second applies it
     linearly; output AAC 128 kbps 48 kHz. Video: libx264 veryfast crf 20, high profile,
     yuv420p, faststart, frame rate capped at 60; when there is nothing to draw (captions
