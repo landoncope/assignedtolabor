@@ -285,7 +285,16 @@ Nothing is half-built. Pick up here.
   hint to clear the box. **(1) and (4) need the file changed:** the API has no
   parameter for captions, subtitles, text or stickers (the full parameter list was
   checked), and Instagram's own auto-captions are a viewer-side setting that may not
-  cover Tagalog, Slovak or Swahili and is not documented for API posts. A prototype in
+  cover Tagalog, Slovak or Swahili and is not documented for API posts. TESTED
+  2026-11-01: on Landon's iPhone, with the app's Accessibility -> "Turn on closed
+  captions" switched on (the app has no "Accessibility and translations" section,
+  whatever the Help Center says), the English Reel DewGfhWFAHl showed no captions;
+  on the web (Landon's Chrome, logged in as landon_cope) the player has no caption
+  track and no CC control, the Reel's menu has no captions entry, and the web
+  settings' Accessibility page holds only "Reduce motion". So viewers get no captions
+  on our API-published Reels today. Untested: whether the account's owner can switch
+  them on per Reel in the app (three dots -> "Manage closed captions"), which would
+  still be viewer-dependent and English-centred. A prototype in
   the session scratchpad (`proto/burn.py`: ElevenLabs Scribe words with timestamps,
   cue images from PIL, ffmpeg overlay, no libass needed) burned captions and a
   headline into two real clips: Ty's 13 s Android clip in 0.7 s and Megan's 49 s
