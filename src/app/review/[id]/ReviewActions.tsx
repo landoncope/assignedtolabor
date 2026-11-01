@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { pictureWarning } from "@/lib/capture-meta";
 import { areaLabel, type Area, type PublishState, type VideoWithArea } from "@/lib/types";
-import { approveVideo, assignArea, deleteVideo, markPosted, postToInstagram, rejectVideo, reopenVideo } from "../actions";
+import { approveVideo, assignArea, deleteVideo, markPosted, postToInstagram, rejectVideo, reopenVideo, unpostVideo } from "../actions";
 
 const MAX_CAPTION = 2200;
 type Publish = { state: PublishState | null; error: string | null; detail?: string | null; postUrl?: string | null };
@@ -19,6 +19,8 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmPosted, setConfirmPosted] = useState(false);
+  const [confirmUnpost, setConfirmUnpost] = useState(false);
   const [publish, setPublish] = useState<Publish>({ state: video.publish_state, error: video.publish_error });
   const router = useRouter();
 
@@ -104,17 +106,30 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
     </label>
   );
 
+  // Posting by hand (no connected account, or by choice). Marking it posted asks first:
+  // on 2026-10-29 a lead took "Mark as posted" for the post button while the team's
+  // connection was dead, and two videos were recorded as posted that never were.
   const manualPost = (
     <>
       <p className="text-sm text-muted">
-        Download the file, post it from {handle ? <>the <b>@{handle}</b> Instagram account</> : "the team's Instagram account"}, then paste the link here.
+        Download the file, post it from {handle ? <>the <b>@{handle}</b> Instagram account</> : "the team's Instagram account"} yourself, then come back and paste the link here.
       </p>
       <div className="flex gap-2">
         <button onClick={download} disabled={downloading} className="btn-secondary flex-1">{downloading ? "Preparing…" : "Download video"}</button>
         <button onClick={copyCaption} disabled={!caption} className="btn-secondary flex-1">{copied ? "Copied" : "Copy caption"}</button>
       </div>
       <input className="input" placeholder="https://www.instagram.com/reel/…" value={postUrl} onChange={(e) => setPostUrl(e.target.value)} />
-      <button onClick={() => run(() => markPosted(video.id, postUrl))} disabled={pending} className={connected ? "btn-secondary" : "btn-primary py-3"}>Mark as posted</button>
+      {confirmPosted ? (
+        <div className="rounded-lg border border-line p-3">
+          <p className="text-sm">Is it live on Instagram already? This only records it here; it does not post anything.</p>
+          <div className="mt-2 flex gap-2">
+            <button onClick={() => { setConfirmPosted(false); run(() => markPosted(video.id, postUrl)); }} disabled={pending} className="btn-primary flex-1">Yes, it&rsquo;s on Instagram</button>
+            <button onClick={() => setConfirmPosted(false)} disabled={pending} className="btn-secondary flex-1">Not yet</button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setConfirmPosted(true)} disabled={pending} className={connected ? "btn-secondary" : "btn-primary py-3"}>I posted it myself</button>
+      )}
     </>
   );
 
@@ -190,9 +205,22 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
 
       {video.status === "posted" && (
         <div className="card text-sm">
-          Posted {video.posted_at ? new Date(video.posted_at).toLocaleString() : ""}{video.post_media_id && handle ? <> on <b>@{handle}</b></> : ""}.
+          {video.post_media_id
+            ? <>Posted {video.posted_at ? new Date(video.posted_at).toLocaleString() : ""}{handle ? <> on <b>@{handle}</b></> : ""}.</>
+            : <>Marked as posted by hand {video.posted_at ? new Date(video.posted_at).toLocaleString() : ""}.{video.post_url ? "" : " No link to the post was given."}</>}
           {video.post_url && <> <a href={video.post_url} target="_blank" rel="noreferrer" className="text-accent underline">Open post</a></>}
           <p className="mt-1 text-muted">The source file is deleted automatically seven days after posting.</p>
+          {!video.file_purged_at && (confirmUnpost ? (
+            <div className="mt-3 rounded-lg border border-line p-3">
+              <p>Move it back to Ready to post? For a video marked posted by mistake. Nothing on Instagram changes{video.post_media_id ? ": the Reel stays up unless you delete it there" : ""}.</p>
+              <div className="mt-2 flex gap-2">
+                <button onClick={() => { setConfirmUnpost(false); setPublish({ state: null, error: null }); run(() => unpostVideo(video.id)); }} disabled={pending} className="btn-primary flex-1">Move it back</button>
+                <button onClick={() => setConfirmUnpost(false)} disabled={pending} className="btn-secondary flex-1">Keep it posted</button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => setConfirmUnpost(true)} disabled={pending} className="mt-2 block text-muted underline hover:text-foreground">Not actually posted? Move it back</button>
+          ))}
         </div>
       )}
 

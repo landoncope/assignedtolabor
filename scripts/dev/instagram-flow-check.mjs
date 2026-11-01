@@ -318,7 +318,30 @@ try {
   const vG = await video(G, "status, publish_state, publish_error");
   check("disconnect mid-post fails the post with a reason", vG?.status === "approved" && vG.publish_state === "failed" && /disconnected/.test(vG.publish_error ?? ""), JSON.stringify(vG));
   await page.goto(`${base}/review/${G}`);
-  check("a failed post on a team with no account shows the manual flow and a connect link", (await page.textContent("body")).includes("connect this team") && (await page.getByRole("button", { name: "Mark as posted" }).isVisible()));
+  check("a failed post on a team with no account shows the manual flow and a connect link", (await page.textContent("body")).includes("connect this team") && (await page.getByRole("button", { name: "I posted it myself" }).isVisible()));
+
+  // Marking a video posted by hand asks first (on 2026-10-29 a lead took "Mark as posted"
+  // for the post button while the connection was dead), and a video marked by mistake
+  // can be moved back to Ready to post while its file is still there.
+  await page.getByRole("button", { name: "I posted it myself" }).click();
+  check("marking posted by hand asks whether it is really on Instagram", (await page.textContent("body")).includes("Is it live on Instagram already"));
+  await page.getByRole("button", { name: "Not yet" }).click();
+  check("Not yet leaves the video approved", (await video(G, "status")).status === "approved" && await page.getByRole("button", { name: "I posted it myself" }).isVisible());
+  await page.getByRole("button", { name: "I posted it myself" }).click();
+  await page.getByRole("button", { name: /^Yes, it/ }).click();
+  await page.getByText(/^Marked as posted by hand/).waitFor({ timeout: 15_000 });
+  const vG2 = await video(G, "status, post_media_id, post_url, posted_by");
+  check("marked posted by hand, with no post id and no link", vG2?.status === "posted" && !vG2.post_media_id && !vG2.post_url && vG2.posted_by === created.userId, JSON.stringify(vG2));
+  await db.from("videos").update({ uploader_notified_status: "posted" }).eq("id", G); // as if the sweep had told the uploader
+  await page.getByRole("button", { name: /Not actually posted/ }).click();
+  await page.getByRole("button", { name: "Move it back" }).click();
+  await page.getByText("Post it", { exact: true }).waitFor({ timeout: 15_000 });
+  const vG3 = await video(G, "status, posted_at, posted_by, post_url, publish_state, publish_error, uploader_notified_status, reviewed_by");
+  check("moved back to Ready to post with the posting bookkeeping cleared", vG3?.status === "approved" && !vG3.posted_at && !vG3.posted_by && !vG3.publish_state && !vG3.publish_error && !vG3.uploader_notified_status && vG3.reviewed_by === created.userId, JSON.stringify(vG3));
+  await db.from("videos").update({ file_purged_at: new Date().toISOString() }).eq("id", A);
+  await page.goto(`${base}/review/${A}`);
+  check("a posted video whose file is purged offers no way back", (await page.textContent("body")).includes("Posted ") && (await page.getByRole("button", { name: /Not actually posted/ }).count()) === 0);
+  await db.from("videos").update({ file_purged_at: null }).eq("id", A);
 
   // Instagram answers the callback with a code it then rejects: the lead sees Instagram's message.
   await page.goto(`${base}/review`);

@@ -52,6 +52,28 @@ export async function reopenVideo(videoId: string) {
   return { ok: true };
 }
 
+/**
+ * A posted video that was not posted after all (two were marked by hand by mistake on
+ * 2026-10-29, while the team's connection was dead): back to Ready to post, with the
+ * posting bookkeeping cleared so the uploader is told when it really is posted. Only
+ * while the file is still there: the purge deletes it seven days after the posting
+ * date, mistaken or not. Nothing on Instagram is touched.
+ */
+export async function unpostVideo(videoId: string) {
+  await requireManager(`/review/${videoId}`);
+  const supabase = await createClient();
+  const { data: row } = await supabase.from("videos").select("status, file_purged_at").eq("id", videoId).maybeSingle();
+  if (!row) return { error: "Video not found." };
+  if (row.status !== "posted") return { error: "This video is not marked posted." };
+  if (row.file_purged_at) return { error: "The file was deleted seven days after it was marked posted, so there is nothing left to post." };
+  const { error } = await supabase.from("videos")
+    .update({ status: "approved", posted_by: null, posted_at: null, post_url: null, post_media_id: null, publish_state: null, publish_error: null, publish_container_id: null, uploader_notified_status: null })
+    .eq("id", videoId).eq("status", "posted");
+  if (error) return { error: error.message };
+  revalidatePath("/review"); revalidatePath(`/review/${videoId}`);
+  return { ok: true };
+}
+
 /** Admins (or the area's manager) can move a video to a different area. */
 export async function assignArea(videoId: string, areaId: string | null) {
   await requireManager(`/review/${videoId}`);

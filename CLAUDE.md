@@ -4,7 +4,7 @@ Owner: Landon Cope (landon@highpsiproducts.com). Product owner: Travis (non-tech
 Claude owns this repo: language, dependencies, architecture, and this file. Keep CLAUDE.md
 current whenever a decision is made or reversed. Dates below are absolute (YYYY-MM-DD).
 
-## Status (2026-10-30)
+## Status (2026-10-31)
 
 **MVP is live in production at https://assignedtolabor.org.** Landon and Travis are
 admins and are testing. Working and verified: anonymous upload with portrait 9:16
@@ -70,7 +70,7 @@ English case of 10-27 was not alone); the publish cron now probes every connecti
 daily and the leads are emailed to connect again ("Connection health" under the
 Instagram posting decision). Every team must Connect again before its next one-tap post.
 
-### Where we paused (2026-10-30: dashboard live, every team must reconnect Instagram)
+### Where we paused (2026-10-31: dashboard live, every team must reconnect Instagram)
 
 Nothing is half-built. Pick up here.
 
@@ -218,10 +218,10 @@ Nothing is half-built. Pick up here.
   recurs without a password change, Instagram is resetting the session itself
   (a security checkpoint on a new account posting daily), and the fix is the same.
 
-- **2026-10-30, the dashboard, a security fix, and four dead tokens.** The English
-  lead had posted the two videos the dead token blocked BY HAND on 2026-10-29 (marked
-  posted from the manual flow, so `publish_state` stays `failed` on them; harmless)
-  and the English team is NOT reconnected (no `instagram_accounts` row). A read-only
+- **2026-10-30, the dashboard, a security fix, and four dead tokens.** The two
+  videos the dead token blocked were marked posted BY HAND on 2026-10-29 (it turned
+  out on 10-31 that they were never posted at all; see the next bullet) and the
+  English team is NOT reconnected (no `instagram_accounts` row). A read-only
   `/me` probe with each stored token then showed Philippines, Slovak and Taiwan dead
   too, all with the same code-190 "session invalidated (password changed or security)"
   message, all four connected on 2026-10-20 by Travis and the leads. Nothing in our
@@ -243,6 +243,30 @@ Nothing is half-built. Pick up here.
   the Meta-app step that unlocks reach and views (`INSTAGRAM_INSIGHTS`), and the open
   wording question (the nav tab still says "My videos"; Travis asked for the tabs to
   stay as they are).
+- **2026-10-31, two videos "posted" that never were, and Travis's answer.** Travis:
+  he connected Philippines, Slovak and Taiwan from his own computer on 2026-10-20 and
+  saw no "confirm it's you" prompt. That fits: the token lives in the login session
+  it was made in, and a session opened in Utah on an account run from Manila,
+  Bratislava or Taipei is what Instagram's security check, or the account's owner
+  looking at "Where you're logged in", ends first. The English token died on its own
+  (a password change or a reset). So the reconnects should be done by the person who
+  runs each account, on their own device, and the account left logged in there. The
+  two English videos (45f96777 Rebekah, 2bdc8532 Ty): Andrea opened them on 10-29 to
+  post them; the connection had been forgotten on 10-28, so the page showed the manual
+  flow with its primary "Mark as posted" button and no confirmation; she tapped it on
+  both (21:53 UTC, no link pasted) and they became "posted" with no post behind them
+  (`post_media_id` null, `publish_state` still `failed`). Two side effects: the notify
+  sweep told Ty his video was posted (21:55 UTC), and the purge would have deleted
+  both files on 11-05. Fixed the same day: (1) both rows moved back to approved by
+  hand (posted fields, `publish_state`, `publish_error`, `uploader_notified_status`
+  cleared; files intact); they sit on English's Ready to post tab, one tap each once
+  the account is reconnected, and Ty then gets a correct email. (2) The posted card
+  offers "Not actually posted? Move it back" (`unpostVideo` in `review/actions.ts`:
+  leads of the team and admins, only while the file is still there, nothing on
+  Instagram changes) and says "Marked as posted by hand" when there is no Instagram
+  post id. (3) The by-hand button is now "I posted it myself" and asks "Is it live on
+  Instagram already? This only records it here; it does not post anything." before
+  marking. Flow check 70.
 
 ### After the 2026-09-19 event (do these, then delete this list)
 
@@ -648,8 +672,11 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     (the dashboard, see Dashboard under Decisions, and the daily probe: a connection
     checked within the day left alone, a healthy one noted, a rejected one forgotten
     with the loss on the team row, the `instagram_lost` email planned, the reason on
-    the Review page, Connect clearing it). Its cron calls are scoped to its own rows
-    (see the cron above): real posts are in flight now.
+    the Review page, Connect clearing it), 70 on 2026-10-31 (marking posted by hand
+    asks first and "Not yet" changes nothing, the mark leaves no post id, "Move it
+    back" returns the video to approved with the posting bookkeeping cleared, and a
+    posted video whose file is purged offers no way back). Its cron calls are scoped
+    to its own rows (see the cron above): real posts are in flight now.
     The mock takes `/__config?badcode=1` to hand back a bad code once and
     `/__config?deadtoken=1` to reject the token (code 190) on the next Graph call.
     Against the real Instagram, two helpers: `node scripts/dev/instagram-live-test.mjs
@@ -1094,7 +1121,13 @@ redirects to localhost and the sign-in cookie does not follow across hostnames.
   step (Landon, 2026-09-15: many people don't need prompts). A skipped script stores
   `script = null`; the review page then shows "No script. The uploader improvised."
 - `videos.status`: pending -> approved -> posted, or pending/approved -> rejected.
-  Reviewers may reopen. `script` is `{hook, body, cta}` and doubles as the caption.
+  Reviewers may reopen a rejected or approved one (`reopenVideo`, back to pending) and,
+  since 2026-10-31, move a posted one back to approved while its file is still there
+  (`unpostVideo`: clears the posted fields, `publish_state`, `publish_error` and
+  `uploader_notified_status`; nothing on Instagram changes; the page says "Marked as
+  posted by hand" when `post_media_id` is null). Marking posted by hand asks "Is it
+  live on Instagram already?" first. `script` is `{hook, body, cta}` and doubles as
+  the caption.
 - Delete (2026-09-15, Landon): the review page has a "Delete this video" link with an
   inline confirm. `deleteVideo` in `src/app/review/actions.ts` deletes the row through
   the caller's session (RLS `videos_delete_manage`: area managers, admins, admins for
