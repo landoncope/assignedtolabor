@@ -353,7 +353,10 @@ Nothing is half-built. Pick up here.
   fast), container, published, https://www.instagram.com/reel/DfL5c4LjSB4/. Landon
   asked the same hour whether the captions should sit lower than 78%; his screenshot of
   this Reel on his iPhone 17 Pro Max settled it (see the look above): headline from 10%
-  to 15%, captions from 78% to 82%, `RENDER_VERSION` 4. The test team and its connection stay for more tests until
+  to 15%, captions from 78% to 82%, `RENDER_VERSION` 4, and a second test Reel with that
+  placement, https://www.instagram.com/reel/DfL6qIEjjDd/ (04:52 UTC, no collaborator),
+  for him to compare on the same screen. Both test Reels stay on @landon_cope until he
+  deletes them in the app. The test team and its connection stay for more tests until
   `instagram-live-test.mjs cleanup`; the Reel stays unless deleted in the app.
 
 ### After the 2026-09-19 event (do these, then delete this list)
