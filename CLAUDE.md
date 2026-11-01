@@ -342,7 +342,21 @@ Nothing is half-built. Pick up here.
   per second of video on 1 vCPU, outputs 10 to 45 MB. Their rendered files are stored
   and current, so their one-tap posts skip the render. Landon's phone pages: the
   seventeen style samples https://claude.ai/artifact/HfjNmgFwyYVHhFf29po47B and the
-  real clips (ten-second excerpts and frames) linked in the chat of 2026-11-01.
+  real clips (ten-second excerpts and frames) https://claude.ai/artifact/N5Kv76aJ8KNRGU5X2gfEAy.
+  **The first captioned Reel on Instagram, 2026-11-01 04:42 UTC:** a 13 s test clip
+  (the Mac's voice over the logo on navy, made by `say` and ffmpeg; `node
+  scripts/dev/instagram-live-test.mjs setup --file …`) on the "Instagram test" team,
+  @landon_cope connected by Landon (the consent page only asked Allow this time, no
+  password: the app was authorised before), the caption sweep run for it by hand
+  (`?only=`: five cues, headline "This is a test post"), then one tap on the review
+  page with the collaborator box set: render 11 s on Vercel (a plain picture encodes
+  fast), container, published, https://www.instagram.com/reel/DfL5c4LjSB4/. Landon
+  asked the same hour whether the captions should sit lower than 78%: the answer is
+  Instagram's own overlay (username, two caption lines and the audio line over the
+  bottom fifth, the like column up the right edge), and this Reel on his phone is the
+  check; lowering is one number in `buildAss` and `VideoPlayer` plus the check's frame
+  regions. The test team and its connection stay for more tests until
+  `instagram-live-test.mjs cleanup`; the Reel stays unless deleted in the app.
 
 ### After the 2026-09-19 event (do these, then delete this list)
 
@@ -731,8 +745,13 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     invitee accepts in the Instagram app; the posted card says the invite was sent. A
     container refusal while collaborators were sent appends "clear the collaborators
     box and try again" to Instagram's reason, because whether the parameter works
-    under Instagram Login is unconfirmed. The mock records the list on the container
-    and `/__config?nocollab=1` makes it refuse the next one.
+    under Instagram Login was unconfirmed until **2026-11-01 04:42 UTC: CONFIRMED.** A
+    test post from the "Instagram test" team to @landon_cope with `collaborators=
+    ["seek_this_jesus_"]` was accepted by Instagram: container created, published,
+    https://www.instagram.com/reel/DfL5c4LjSB4/ (public signed-out). Whether the invite
+    then shows for the invitee is seen in the app (Travis runs that account). The mock
+    records the list on the container and `/__config?nocollab=1` makes it refuse the
+    next one.
   - Meta's callbacks: `POST /api/instagram/deauthorize` and `/api/instagram/data-deletion`
     take Meta's `signed_request` (HMAC-SHA256 with the Instagram app secret), forget the
     token for that account id (either of its two ids) and, for deletion, answer with
