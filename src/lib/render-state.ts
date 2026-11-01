@@ -5,8 +5,8 @@ import { isCueList } from "./caption-cues";
  * What the publish flow needs to know about the render step without loading ffmpeg
  * (src/lib/render.ts does the work). Server only.
  */
-/** Bump when the look changes, so files rendered before are made again at the next post. 3: Landon's chosen look (Inter, 72/92) of 2026-11-01. */
-export const RENDER_VERSION = 3;
+/** Bump when the look changes, so files rendered before are made again at the next post. 4: placement from the first Reel on a phone (2026-11-01). */
+export const RENDER_VERSION = 4;
 /** Longer videos are posted as they are: a render would not fit in the function's time. */
 export const RENDER_MAX_SECONDS = 12 * 60;
 /** A render left in "rendering" this long is taken over by the next sweep (the function died). */

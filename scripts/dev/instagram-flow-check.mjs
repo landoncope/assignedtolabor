@@ -248,7 +248,7 @@ try {
   execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-ss", "2", "-i", file, "-frames:v", "1", join(tmp, "orig.png")]);
   execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-ss", "2", "-i", renderedA, "-frames:v", "1", join(tmp, "rendered.png")]);
   execFileSync("cp", [join(tmp, "rendered.png"), join(shots, "rendered-frame.png")]);
-  const lum = execFileSync("python3", ["-c", "import sys\nfrom PIL import Image, ImageStat\no = Image.open(sys.argv[1]).convert('L'); r = Image.open(sys.argv[2]).convert('L')\nm = lambda i, b: ImageStat.Stat(i.crop(b)).mean[0]\ncap = (90, 464, 270, 494); head = (90, 72, 270, 106)\nprint(round(m(o, cap)), round(m(r, cap)), round(m(o, head)), round(m(r, head)))", join(tmp, "orig.png"), join(tmp, "rendered.png")]).toString().trim().split(" ").map(Number);
+  const lum = execFileSync("python3", ["-c", "import sys\nfrom PIL import Image, ImageStat\no = Image.open(sys.argv[1]).convert('L'); r = Image.open(sys.argv[2]).convert('L')\nm = lambda i, b: ImageStat.Stat(i.crop(b)).mean[0]\ncap = (90, 490, 270, 520); head = (90, 104, 270, 138)\nprint(round(m(o, cap)), round(m(r, cap)), round(m(o, head)), round(m(r, head)))", join(tmp, "orig.png"), join(tmp, "rendered.png")]).toString().trim().split(" ").map(Number);
   check("the caption box darkens its region of the frame at 2 s", lum[0] > 30 && lum[1] < 0.8 * lum[0], `original ${lum[0]}, rendered ${lum[1]}`);
   check("the headline box darkens its region at the top", lum[2] > 30 && lum[3] < 0.8 * lum[2], `original ${lum[2]}, rendered ${lum[3]}`);
 

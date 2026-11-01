@@ -351,11 +351,9 @@ Nothing is half-built. Pick up here.
   (`?only=`: five cues, headline "This is a test post"), then one tap on the review
   page with the collaborator box set: render 11 s on Vercel (a plain picture encodes
   fast), container, published, https://www.instagram.com/reel/DfL5c4LjSB4/. Landon
-  asked the same hour whether the captions should sit lower than 78%: the answer is
-  Instagram's own overlay (username, two caption lines and the audio line over the
-  bottom fifth, the like column up the right edge), and this Reel on his phone is the
-  check; lowering is one number in `buildAss` and `VideoPlayer` plus the check's frame
-  regions. The test team and its connection stay for more tests until
+  asked the same hour whether the captions should sit lower than 78%; his screenshot of
+  this Reel on his iPhone 17 Pro Max settled it (see the look above): headline from 10%
+  to 15%, captions from 78% to 82%, `RENDER_VERSION` 4. The test team and its connection stay for more tests until
   `instagram-live-test.mjs cleanup`; the Reel stays unless deleted in the app.
 
 ### After the 2026-09-19 event (do these, then delete this list)
@@ -993,10 +991,15 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     `outputFileTracingIncludes`; if the deploy loses the mode bit the binary is copied
     to /tmp and made executable). The captions are an ASS file (`buildAss`: PlayRes =
     the frame as displayed, rotation applied; style Caption: Inter Bold 72 px on a
-    1080 px wide frame, white, BorderStyle 4 box at 50% black, bottom edge at 78% of
-    the height, below a selfie's mouth and above Instagram's caption area; style
-    Headline: 92 px, white on a 60% black box, top edge at 10%, below the strip the
-    app covers. **Landon chose this (sample 6) on 2026-11-01** from seventeen frames of
+    1080 px wide frame, white, BorderStyle 4 box at 50% black, bottom edge at 82% of
+    the height; style Headline: 92 px, white on a 60% black box, top edge at 15%.
+    The placement was measured on the first Reel on a phone (Landon's iPhone 17 Pro
+    Max, 2026-11-01): the app scales the 9:16 frame to the screen's height (about
+    1.37x, a sliver cropped each side), the "Reels / Friends" header covers the
+    frame's top 12% (a headline at 10% sat right on it), the like column runs up the
+    right edge from 66%, and the username and caption rows sit below 90% of the frame,
+    so captions ending at 82% clear them with room. Other screens may differ; this is
+    the one data point. **Landon chose this (sample 6) on 2026-11-01** from seventeen frames of
     Ty's clip (Inter, Liberation Sans, Montserrat, Poppins, Noto Sans; boxes,
     outlines, capitals, larger sizes; a private claude.ai page of them,
     https://claude.ai/artifact/HfjNmgFwyYVHhFf29po47B, sheets in

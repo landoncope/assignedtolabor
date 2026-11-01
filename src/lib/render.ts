@@ -113,16 +113,18 @@ export function fontFor(lang: string | null | undefined): string {
 
 /**
  * The look Landon chose from seventeen samples (2026-11-01, sample 6): Inter Bold, white
- * on black boxes, captions 72 px with the box ending at 78% of the height (below the mouth
- * of a selfie, above Instagram's own caption area), the headline 92 px on a darker box
- * with its top at 10% (below the strip the app covers). Sizes follow the frame width, so
- * every clip looks the same. Colours are ASS &HAABBGGRR.
+ * on black boxes, captions 72 px with the box ending at 82% of the height, the headline
+ * 92 px on a darker box with its top at 15%. The placement comes from a Reel on his
+ * iPhone 17 Pro Max: the app scales the frame to the screen's height, the "Reels /
+ * Friends" header covers the frame's top 12% and the username row sits below 90%, so
+ * the headline clears the header and the captions stay above the username. Sizes follow
+ * the frame width, so every clip looks the same. Colours are ASS &HAABBGGRR.
  */
 export function buildAss(cues: Cue[], headline: string | null, width: number, height: number, font: string, seconds: number | null): string {
   const k = width / 1080;
   const capSize = Math.round(72 * k), headSize = Math.round(92 * k);
   const marginLR = Math.round(100 * k), pad = Math.round(18 * k);
-  const capMarginV = Math.round(height * 0.22), headMarginV = Math.round(height * 0.10);
+  const capMarginV = Math.round(height * 0.18), headMarginV = Math.round(height * 0.15);
   const style = (name: string, size: number, text: string, back: string, align: number, marginV: number) =>
     `Style: ${name},${font},${size},${text},${text},&H00000000,${back},-1,0,0,0,100,100,0,0,4,${pad},0,${align},${marginLR},${marginLR},${marginV},1`;
   const lines = [

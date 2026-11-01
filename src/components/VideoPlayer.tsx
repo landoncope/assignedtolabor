@@ -38,7 +38,7 @@ export default function VideoPlayer({ videoId, poster, endpoint, overlay }: { vi
  * Finds where the picture sits inside the <video> box (it is letterboxed when the box and
  * the picture differ in shape) and draws the current cue and the headline over it, placed
  * and sized like the render does (src/lib/render.ts buildAss: Inter Bold, captions 72 px
- * white on half black ending at 78% of the height; the headline 92 px on darker black from 10%).
+ * white on half black ending at 82% of the height; the headline 92 px on darker black from 15%).
  */
 function WithOverlay({ overlay, children }: { overlay: Overlay; children: React.ReactNode }) {
   const box = useRef<HTMLDivElement>(null);
@@ -68,8 +68,8 @@ function WithOverlay({ overlay, children }: { overlay: Overlay; children: React.
       {children}
       {rect && (
         <div className="pointer-events-none absolute" style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }} aria-hidden="true">
-          {overlay.headline && <div className="absolute left-0 right-0 flex justify-center" style={{ top: "10%" }}><div style={boxStyle(92, true)}>{overlay.headline}</div></div>}
-          {cue && <div className="absolute left-0 right-0 flex justify-center" style={{ bottom: "22%" }}><div style={boxStyle(72, false)}>{cue.text}</div></div>}
+          {overlay.headline && <div className="absolute left-0 right-0 flex justify-center" style={{ top: "15%" }}><div style={boxStyle(92, true)}>{overlay.headline}</div></div>}
+          {cue && <div className="absolute left-0 right-0 flex justify-center" style={{ bottom: "18%" }}><div style={boxStyle(72, false)}>{cue.text}</div></div>}
           <div className="absolute right-1 top-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white/80">Preview</div>
         </div>
       )}
