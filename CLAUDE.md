@@ -78,7 +78,7 @@ one-tap post now re-encodes the file with the spoken words and a headline drawn 
 the loudness evened out (see "Captions drawn into the video" under Decisions). Not yet
 seen on a real post: no team is connected until the leads reconnect.
 
-### Where we paused (2026-11-01: every team must reconnect Instagram; the caption-rendering step awaits Landon's go)
+### Where we paused (2026-11-01 night: captions, headline and collaborators live and proven on test Reels; every team must reconnect Instagram)
 
 Nothing is half-built. Pick up here.
 
@@ -355,8 +355,18 @@ Nothing is half-built. Pick up here.
   this Reel on his iPhone 17 Pro Max settled it (see the look above): headline from 10%
   to 15%, captions from 78% to 82%, `RENDER_VERSION` 4, and a second test Reel with that
   placement, https://www.instagram.com/reel/DfL6qIEjjDd/ (04:52 UTC, no collaborator),
-  for him to compare on the same screen. Both test Reels stay on @landon_cope until he
-  deletes them in the app. The test team and its connection stay for more tests until
+  for him to compare on the same screen: "That looks good." Both test Reels stay on
+  @landon_cope until he deletes them in the app; the test team, its videos and the
+  connection were removed (`instagram-live-test.mjs cleanup`, 05:00 UTC). **Pending
+  after this (people and decisions, nothing to build):** the leads reconnect their
+  teams' Instagram from their own devices (no team is connected; the first real
+  captioned post is theirs); Travis declines the collaborator invite the test sent to
+  @seek_this_jesus_ (or accepts and the test Reel shows on the English profile);
+  Landon's call on 2 vCPU for the Vercel functions (renders take 2 to 3 s per second
+  of video on 1 vCPU); the seven pre-rendered real clips render again at their next
+  post (placement changed); optional: nudge the headline prompt toward the speaker's
+  own words, since six videos from one event script all got "Carrying something
+  heavy?". Landon said @landon_cope may be used for any and all testing. The test team and its connection stay for more tests until
   `instagram-live-test.mjs cleanup`; the Reel stays unless deleted in the app.
 
 ### After the 2026-09-19 event (do these, then delete this list)
