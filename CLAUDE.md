@@ -321,8 +321,20 @@ Nothing is half-built. Pick up here.
   phone, and whether Instagram accepts the re-encoded file (it should: plain H.264,
   AAC 128 kbps, faststart, no edit lists). If rendering misbehaves in production,
   `RENDER_DISABLED=1` in Vercel posts the originals as before. The approved backlog
-  (English's 26) is being re-transcribed for word times by the caption cron, three a
-  run, about 25 minutes of this month's 91 at ElevenLabs.
+  (30 videos) is being re-transcribed for word times and given headlines by the
+  caption cron, three a run, about 30 minutes of this month's 91 at ElevenLabs.
+  **PROVEN on production 2026-11-01 03:55 UTC** (PR #7, merge e99c8e9): the sweep run by
+  hand for Ty's 13 s Android clip 2bdc8532 (`?only=`) timed its words (5 cues) and
+  Claude's headline was "Sweeter than all that is sweet"; `POST /api/videos/<id>/render`
+  with the cron secret then rendered it on Vercel in 28 s in all (probe, loudness
+  measure, encode, upload; `render_meta.encodeMs` 28327), loudness -20.8 -> -16 LUFS,
+  output 10.7 MB H.264 1080x1920 at 6.4 Mbps, AAC 135 kbps 48 kHz, faststart. Frames
+  pulled back look as designed (sample in ~/Downloads/atl-captions-sample/
+  ty-production-sample.png). So about two seconds of Vercel time per second of video
+  on the plan's default 1 vCPU: a 3-minute clip would take 6 to 7 minutes, inside the
+  800 s limit but slow; the dashboard's 4 GB / 2 vCPU setting would roughly halve it.
+  That rendered file sits on Ty's row (`render_state` done) and is what the English
+  lead's next one-tap post of it sends, no second render needed.
 
 ### After the 2026-09-19 event (do these, then delete this list)
 
