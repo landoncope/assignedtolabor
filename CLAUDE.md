@@ -334,7 +334,15 @@ Nothing is half-built. Pick up here.
   on the plan's default 1 vCPU: a 3-minute clip would take 6 to 7 minutes, inside the
   800 s limit but slow; the dashboard's 4 GB / 2 vCPU setting would roughly halve it.
   That rendered file sits on Ty's row (`render_state` done) and is what the English
-  lead's next one-tap post of it sends, no second render needed.
+  lead's next one-tap post of it sends, no second render needed. **Seven real approved
+  videos rendered on production with the final look (2026-11-01 04:25 to 04:40 UTC,
+  commit e72a4c3):** Ty 13 s in 28 s, Mason 25 s in 75 s, Rebekah 33 s in 68 s, Lance
+  34 s in 76 s, Megan 49 s in 139 s, Matt 77 s (a camera-app upload, so the rotation
+  path) in 142 s, Michael (French) 89 s in 173 s: two to three seconds of Vercel time
+  per second of video on 1 vCPU, outputs 10 to 45 MB. Their rendered files are stored
+  and current, so their one-tap posts skip the render. Landon's phone pages: the
+  seventeen style samples https://claude.ai/artifact/HfjNmgFwyYVHhFf29po47B and the
+  real clips (ten-second excerpts and frames) linked in the chat of 2026-11-01.
 
 ### After the 2026-09-19 event (do these, then delete this list)
 
