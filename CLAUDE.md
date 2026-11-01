@@ -762,8 +762,10 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     bad username refused before anything is sent, the mock refusing the invite shows
     the reason and the hint, the list stored with the post and received by the mock,
     the posted card naming the invitees), 92 later the same day (the render step, see
-    "Captions drawn into the video" under Decisions). Its cron calls are scoped to its
-    own rows (see the cron above): real posts are in flight now.
+    "Captions drawn into the video" under Decisions), 96 the same night (the by-hand
+    flow's captioned download and "prepare the captioned video", the lock, a render
+    failure counted once). Its cron calls are scoped to its own rows (see the cron
+    above): real posts are in flight now.
     The mock takes `/__config?badcode=1` to hand back a bad code once and
     `/__config?deadtoken=1` to reject the token (code 190) on the next Graph call.
     Against the real Instagram, two helpers: `node scripts/dev/instagram-live-test.mjs
@@ -964,9 +966,17 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     `outputFileTracingIncludes`; if the deploy loses the mode bit the binary is copied
     to /tmp and made executable). The captions are an ASS file (`buildAss`: PlayRes =
     the frame as displayed, rotation applied; style Caption 64 px on a 1080 px wide
-    frame, white, bold, BorderStyle 4 box at 57% black, bottom edge at 75% of the
+    frame, white, bold, BorderStyle 4 box at 50% black, bottom edge at 78% of the
     height, below a selfie's mouth and above Instagram's caption area; style Headline
-    76 px, top edge at 15.6%, below the strip the app covers) rendered by the
+    80 px, white on a 60% black box, top edge at 10%, below the strip the app covers.
+    Landon's feedback on the first look, 2026-11-01: title higher, captions lower, the
+    two visibly different, nothing coloured, a plain font; a gold-on-navy title was
+    tried and dropped; this is the interim look while he picks from the style samples
+    (17 frames of Ty's clip in ~/Downloads/atl-captions-sample/style-sheet.png and
+    style-sheet-2.png: Inter, Liberation Sans, Montserrat, Poppins, Noto Sans; boxes,
+    outlines, capitals, larger sizes; fonts and the generator in the session scratchpad,
+    `proto/style-samples*.mjs`). `RENDER_VERSION` 2 makes files rendered before it
+    stale, so the next post of such a video renders again) rendered by the
     `subtitles` filter with `fontsdir=assets/fonts` (Noto Sans Bold; Noto Sans TC Bold
     for Chinese, Japanese and Korean transcripts; OFL, licence in the folder). Loudness:
     a first `loudnorm` pass measures (audio only, fast), the second applies it
@@ -988,7 +998,17 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     add the captions to the video: ...", and the page offers Try again and "Post the
     original file instead" (`skipRender`: `render_state = skipped`, then the original).
     The size pre-check moved to the file being posted: an original over 300 MB is fine
-    if the rendered file is under. Words missing at render time (a video transcribed
+    if the rendered file is under. **One worker at a time** (found by the flow check
+    the same evening): the page's polling, the render route and the cron can all reach
+    the Instagram step the moment a render finishes, and two of them did, one
+    overwriting the other's error (and in principle two containers could be created).
+    So `startPublish` and `advancePublish` claim the row first (`videos.publish_lock_at`,
+    migration `20261101180000_publish_lock.sql`: null or older than 5 minutes -> now,
+    returning the fresh row), run their one Instagram call, and release; a loser answers
+    with the row as it stands. The claimed row goes ahead only while its post is still
+    `queued` (a render that failed a moment ago has already failed the post), and a
+    failed render writes its own failure and the post's in ONE update, so no poll can
+    see the half-written state and queue the render again. Words missing at render time (a video transcribed
     before 2026-11-01) are fetched then by one Scribe call (`retimeVideo`, seconds);
     without ElevenLabs configured the render goes ahead without captions and says so
     in `render_meta.note`.
@@ -1003,7 +1023,14 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     rectangle inside the letterboxed box is measured, sizes follow its width; marked
     "Preview", the real captions are drawn into the file). While the post waits for
     the render the page says "Adding the captions to the video…"; the posted card
-    says what was drawn in. The caption sweep stores words and cues with every new
+    says what was drawn in. **Posting by hand** (a team not connected, or by choice)
+    gets the same: the card sits above the caption box there too, "Download video"
+    downloads the rendered file when it is current (`/api/videos/[id]/playback-url?
+    rendered=1`, signed with the service role once RLS has shown the caller the row;
+    "Original file instead" for the raw one) and otherwise the page offers "prepare
+    the captioned video", which calls the render route and refreshes. Found 2026-11-01
+    when Landon asked to see the captions: no team was connected, so every review page
+    showed the by-hand flow, where the card had not been placed. The caption sweep stores words and cues with every new
     transcript, asks Claude for a `headline` with the caption (two to six words, the
     hook, in the speaker's language), and has two more branches, three videos a run
     each: approved videos transcribed before word times were kept are transcribed

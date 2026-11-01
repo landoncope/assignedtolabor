@@ -12,7 +12,7 @@ const MAX_CAPTION = 2200;
 type Render = { state: RenderState | null; error: string | null } | null;
 type Publish = { state: PublishState | null; error: string | null; detail?: string | null; postUrl?: string | null; rendering?: boolean; render?: Render };
 
-export default function ReviewActions({ video, areas, caption: scriptCaption, isAdmin, canConnect, canPrepare }: { video: VideoWithArea; areas: Area[]; caption: string; isAdmin: boolean; canConnect: boolean; canPrepare: boolean }) {
+export default function ReviewActions({ video, areas, caption: scriptCaption, isAdmin, canConnect, canPrepare, renderCurrent }: { video: VideoWithArea; areas: Area[]; caption: string; isAdmin: boolean; canConnect: boolean; canPrepare: boolean; renderCurrent: boolean }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
@@ -24,6 +24,7 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
   const [collaborators, setCollaborators] = useState(video.post_collaborators?.length ? video.post_collaborators.map((u) => `@${u}`).join(", ") : usual);
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [preparing, setPreparing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmPosted, setConfirmPosted] = useState(false);
   const [confirmUnpost, setConfirmUnpost] = useState(false);
@@ -98,20 +99,35 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
     });
   }
 
-  async function download() {
+  /** The file for a post by hand: the rendered one (captions, headline, loudness) when it is current, else the original. */
+  async function download(rendered: boolean) {
     setDownloading(true); setError("");
     try {
-      const r = await fetch(`/api/videos/${video.id}/playback-url`);
+      const r = await fetch(`/api/videos/${video.id}/playback-url${rendered ? "?rendered=1" : ""}`);
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? "Could not get the file");
       const blob = await (await fetch(j.url)).blob();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = video.file_name ?? `video-${video.id}.mp4`;
+      const base = (video.file_name ?? `video-${video.id}.mp4`).replace(/\.[a-z0-9]+$/i, "");
+      a.download = rendered ? `${base}-captioned.mp4` : (video.file_name ?? `video-${video.id}.mp4`);
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
     } catch (e) { setError(e instanceof Error ? e.message : "Download failed"); }
     finally { setDownloading(false); }
+  }
+
+  /** Render now, for a post by hand on a team that is not connected (the same step a one-tap post runs). */
+  async function prepareRender() {
+    setPreparing(true); setError("");
+    try {
+      const r = await fetch(`/api/videos/${video.id}/render`, { method: "POST" });
+      const j = (await r.json().catch(() => null)) as { render?: { ok: boolean; error?: string; busy?: boolean }; error?: string } | null;
+      if (!r.ok) throw new Error(j?.error ?? "Could not prepare the captioned video");
+      if (j?.render && !j.render.ok && !j.render.busy) throw new Error(j.render.error ?? "The render failed");
+      router.refresh();
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not prepare the captioned video"); }
+    finally { setPreparing(false); }
   }
 
   async function copyCaption() {
@@ -155,13 +171,21 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
   // Posting by hand (no connected account, or by choice). Marking it posted asks first:
   // on 2026-10-29 a lead took "Mark as posted" for the post button while the team's
   // connection was dead, and two videos were recorded as posted that never were.
+  const drawn = video.render_meta ? [video.render_meta.cues > 0 ? "the captions" : "", video.render_meta.headline ? "the headline" : ""].filter(Boolean) : [];
   const manualPost = (
     <>
       <p className="text-sm text-muted">
         Download the file, post it from {handle ? <>the <b>@{handle}</b> Instagram account</> : "the team's Instagram account"} yourself, then come back and paste the link here.
       </p>
+      {renderCurrent && !captionsDirty ? (
+        <p className="text-xs text-muted">The download has {drawn.length ? `${drawn.join(" and ")} drawn in and ` : ""}the sound evened out. <button type="button" onClick={() => download(false)} disabled={downloading} className="underline">Original file instead</button></p>
+      ) : preparing ? (
+        <p className="text-xs text-muted">Preparing the captioned video… about a minute for each minute of video.</p>
+      ) : (
+        <p className="text-xs text-muted">To post it with the captions drawn in and the sound evened out, <button type="button" onClick={prepareRender} disabled={pending || captionsDirty || !video.storage_path} className="underline">prepare the captioned video</button> first{captionsDirty ? " (save the captions)" : ""}.</p>
+      )}
       <div className="flex gap-2">
-        <button onClick={download} disabled={downloading} className="btn-secondary flex-1">{downloading ? "Preparing…" : "Download video"}</button>
+        <button onClick={() => download(renderCurrent && !captionsDirty)} disabled={downloading || preparing} className="btn-secondary flex-1">{downloading ? "Preparing…" : "Download video"}</button>
         <button onClick={copyCaption} disabled={!caption} className="btn-secondary flex-1">{copied ? "Copied" : "Copy caption"}</button>
       </div>
       <input className="input" placeholder="https://www.instagram.com/reel/…" value={postUrl} onChange={(e) => setPostUrl(e.target.value)} />
@@ -240,7 +264,9 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
             </>
           ) : (
             <>
+              {captionsCard}
               {captionBox}
+              {dirtyNote}
               {manualPost}
               {canConnect && video.area && !connected && (
                 <p className="text-xs text-muted">

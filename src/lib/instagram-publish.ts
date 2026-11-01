@@ -79,6 +79,25 @@ function current(v: VideoRow): PublishOutcome {
 }
 
 /**
+ * One worker at a time on a post (2026-11-01): the page's polling, the render route and
+ * the cron can all arrive the moment a render finishes. The claim takes the row when its
+ * lock is null or older than LOCK_STALE_MS (a worker that died), returns the fresh row,
+ * and the caller releases it after its one Instagram call. A loser answers with the
+ * row as it stands and changes nothing.
+ */
+const LOCK_STALE_MS = 5 * 60_000;
+async function claim(db: Db, videoId: string): Promise<VideoRow | null> {
+  const stale = new Date(Date.now() - LOCK_STALE_MS).toISOString();
+  const { data, error } = await db.from("videos").update({ publish_lock_at: new Date().toISOString() })
+    .eq("id", videoId).or(`publish_lock_at.is.null,publish_lock_at.lt.${stale}`).select(VIDEO_COLS);
+  if (error) throw new Error(error.message);
+  return ((data as unknown as VideoRow[] | null)?.[0]) ?? null;
+}
+async function release(db: Db, videoId: string): Promise<void> {
+  await db.from("videos").update({ publish_lock_at: null }).eq("id", videoId);
+}
+
+/**
  * Instagram no longer accepts the stored token (OAuthException code 190: "the session has
  * been invalidated because the user changed their password or Facebook has changed the
  * session for security reasons", seen 2026-10-27 on the English team after six daily
@@ -132,10 +151,25 @@ export async function checkConnections(db: Db, dry = false, areas: string[] | nu
 
 /** Create the Reel container for a queued video. Fast: one request to Instagram. */
 export async function startPublish(db: Db, videoId: string): Promise<PublishOutcome> {
-  const v = await loadVideo(db, videoId);
-  if (!v) return { state: null, error: "Video not found.", postUrl: null };
+  const v0 = await loadVideo(db, videoId);
+  if (!v0) return { state: null, error: "Video not found.", postUrl: null };
+  if (v0.status === "posted" || v0.publish_state === "published") return { state: "published", error: null, postUrl: v0.post_url };
+  if (v0.publish_state === "processing" && v0.publish_container_id) return current(v0);
+  const v = await claim(db, videoId);
+  if (!v) return current(v0); // another worker is on it right now
+  try {
+    return await startPublishLocked(db, v);
+  } finally {
+    await release(db, videoId);
+  }
+}
+
+async function startPublishLocked(db: Db, v: VideoRow): Promise<PublishOutcome> {
   if (v.status === "posted" || v.publish_state === "published") return { state: "published", error: null, postUrl: v.post_url };
   if (v.publish_state === "processing" && v.publish_container_id) return current(v);
+  // Only a post still queued on the fresh row goes ahead: a render that failed a moment
+  // ago has already failed the post, and starting now would queue the render again.
+  if (v.publish_state !== "queued") return current(v);
   if (!v.area_id) return fail(db, v.id, "This video has no team, so there is no Instagram account to post to.");
   const acct = await loadAccount(db, v.area_id);
   if (!acct) return fail(db, v.id, "This team has no Instagram account connected.");
@@ -177,9 +211,20 @@ export async function startPublish(db: Db, videoId: string): Promise<PublishOutc
 
 /** Check a processing container; publish it when Instagram has finished with the file. */
 export async function advancePublish(db: Db, videoId: string): Promise<PublishOutcome> {
-  const v = await loadVideo(db, videoId);
-  if (!v) return { state: null, error: "Video not found.", postUrl: null };
-  if (v.publish_state === "queued") return startPublish(db, videoId);
+  const v0 = await loadVideo(db, videoId);
+  if (!v0) return { state: null, error: "Video not found.", postUrl: null };
+  if (v0.publish_state === "queued") return startPublish(db, videoId);
+  if (v0.publish_state !== "processing" || !v0.publish_container_id) return current(v0);
+  const v = await claim(db, videoId);
+  if (!v) return current(v0); // another worker is checking it right now
+  try {
+    return await advancePublishLocked(db, v);
+  } finally {
+    await release(db, videoId);
+  }
+}
+
+async function advancePublishLocked(db: Db, v: VideoRow): Promise<PublishOutcome> {
   if (v.publish_state !== "processing" || !v.publish_container_id) return current(v);
   const acct = v.area_id ? await loadAccount(db, v.area_id) : null;
   if (!acct) return fail(db, v.id, "The team's Instagram account was disconnected while the post was in progress.");

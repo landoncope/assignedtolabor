@@ -112,23 +112,26 @@ export function fontFor(lang: string | null | undefined): string {
 }
 
 /**
- * Captions: white on a dark box, bottom edge at 75% of the height (below the mouth of a
- * selfie, above Instagram's own caption area). Headline: larger, top edge at 15.6% (below
- * the top strip the app covers). Sizes follow the frame width, so every clip looks the same.
+ * Captions: white on a half-black box, bottom edge at 78% of the height (below the mouth
+ * of a selfie, above Instagram's own caption area). Headline: larger, white on a darker
+ * box, top edge at 10% (below the strip the app covers). Landon's feedback 2026-11-01:
+ * title higher, captions lower, nothing coloured and a plain font; this is the interim
+ * look while he picks from the style samples. Sizes follow the frame width, so every
+ * clip looks the same. Colours are ASS &HAABBGGRR.
  */
 export function buildAss(cues: Cue[], headline: string | null, width: number, height: number, font: string, seconds: number | null): string {
   const k = width / 1080;
-  const capSize = Math.round(64 * k), headSize = Math.round(76 * k);
+  const capSize = Math.round(64 * k), headSize = Math.round(80 * k);
   const marginLR = Math.round(100 * k), pad = Math.round(18 * k);
-  const capMarginV = Math.round(height * 0.25), headMarginV = Math.round(height * 0.156);
-  const style = (name: string, size: number, back: string, align: number, marginV: number) =>
-    `Style: ${name},${font},${size},&H00FFFFFF,&H00FFFFFF,&H00000000,${back},-1,0,0,0,100,100,0,0,4,${pad},0,${align},${marginLR},${marginLR},${marginV},1`;
+  const capMarginV = Math.round(height * 0.22), headMarginV = Math.round(height * 0.10);
+  const style = (name: string, size: number, text: string, back: string, align: number, marginV: number) =>
+    `Style: ${name},${font},${size},${text},${text},&H00000000,${back},-1,0,0,0,100,100,0,0,4,${pad},0,${align},${marginLR},${marginLR},${marginV},1`;
   const lines = [
     "[Script Info]", "ScriptType: v4.00+", `PlayResX: ${width}`, `PlayResY: ${height}`, "ScaledBorderAndShadow: yes", "WrapStyle: 0", "",
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-    style("Caption", capSize, "&H6E000000", 2, capMarginV),
-    style("Headline", headSize, "&H5A000000", 8, headMarginV),
+    style("Caption", capSize, "&H00FFFFFF", "&H80000000", 2, capMarginV),
+    style("Headline", headSize, "&H00FFFFFF", "&H66000000", 8, headMarginV),
     "", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
   ];
   const end = seconds ? seconds + 1 : 36000;
@@ -224,9 +227,13 @@ export async function renderVideo(db: Db, videoId: string): Promise<RenderOutcom
     return { ok: true, meta };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
+    // One write for the render's failure and the post's, so a poll between two writes
+    // cannot see "publish queued, render failed" and queue the render again.
     const attempts = v.render_attempts + 1;
-    await db.from("videos").update({ render_state: "failed", render_error: message, render_attempts: attempts }).eq("id", v.id);
-    if (v.publish_state === "queued") await db.from("videos").update({ publish_state: "failed", publish_error: `Could not add the captions to the video: ${message}` }).eq("id", v.id);
+    await db.from("videos").update({
+      render_state: "failed", render_error: message, render_attempts: attempts,
+      ...(v.publish_state === "queued" ? { publish_state: "failed", publish_error: `Could not add the captions to the video: ${message}` } : {}),
+    }).eq("id", v.id);
     return { ok: false, error: message };
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {});

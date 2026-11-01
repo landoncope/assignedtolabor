@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { captionsConfigured } from "@/lib/captions";
 import { isCueList } from "@/lib/caption-cues";
 import { describeCapture, pictureWarning } from "@/lib/capture-meta";
+import { renderCurrent } from "@/lib/render-state";
 import { AREA_SUMMARY_COLS, areaLabel, STATUS_LABEL, type Area, type VideoWithArea } from "@/lib/types";
 import ReviewActions from "./ReviewActions";
 
@@ -96,7 +97,7 @@ export default async function ReviewVideoPage({ params }: PageProps<"/review/[id
             )}
             {v.uploader_note && <div className="card"><div className="label">Note from uploader</div><p className="text-sm">{v.uploader_note}</p></div>}
             {v.rejection_note && <div className="card"><div className="label">Reason not selected</div><p className="text-sm">{v.rejection_note}</p></div>}
-            <ReviewActions video={v} areas={(areas ?? []) as Area[]} caption={caption} isAdmin={viewer.isAdmin} canConnect={viewer.isAdmin || (!!v.area_id && viewer.managedAreaIds.includes(v.area_id))} canPrepare={captionsConfigured() && !!v.storage_path && !v.file_purged_at} />
+            <ReviewActions video={v} areas={(areas ?? []) as Area[]} caption={caption} isAdmin={viewer.isAdmin} canConnect={viewer.isAdmin || (!!v.area_id && viewer.managedAreaIds.includes(v.area_id))} canPrepare={captionsConfigured() && !!v.storage_path && !v.file_purged_at} renderCurrent={renderCurrent(v)} />
           </div>
         </div>
       </main>

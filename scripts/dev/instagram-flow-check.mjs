@@ -248,7 +248,7 @@ try {
   execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-ss", "2", "-i", file, "-frames:v", "1", join(tmp, "orig.png")]);
   execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-ss", "2", "-i", renderedA, "-frames:v", "1", join(tmp, "rendered.png")]);
   execFileSync("cp", [join(tmp, "rendered.png"), join(shots, "rendered-frame.png")]);
-  const lum = execFileSync("python3", ["-c", "import sys\nfrom PIL import Image, ImageStat\no = Image.open(sys.argv[1]).convert('L'); r = Image.open(sys.argv[2]).convert('L')\nm = lambda i, b: ImageStat.Stat(i.crop(b)).mean[0]\ncap = (90, 448, 270, 476); head = (90, 106, 270, 137)\nprint(round(m(o, cap)), round(m(r, cap)), round(m(o, head)), round(m(r, head)))", join(tmp, "orig.png"), join(tmp, "rendered.png")]).toString().trim().split(" ").map(Number);
+  const lum = execFileSync("python3", ["-c", "import sys\nfrom PIL import Image, ImageStat\no = Image.open(sys.argv[1]).convert('L'); r = Image.open(sys.argv[2]).convert('L')\nm = lambda i, b: ImageStat.Stat(i.crop(b)).mean[0]\ncap = (90, 466, 270, 495); head = (90, 70, 270, 104)\nprint(round(m(o, cap)), round(m(r, cap)), round(m(o, head)), round(m(r, head)))", join(tmp, "orig.png"), join(tmp, "rendered.png")]).toString().trim().split(" ").map(Number);
   check("the caption box darkens its region of the frame at 2 s", lum[0] > 30 && lum[1] < 0.8 * lum[0], `original ${lum[0]}, rendered ${lum[1]}`);
   check("the headline box darkens its region at the top", lum[2] > 30 && lum[3] < 0.8 * lum[2], `original ${lum[2]}, rendered ${lum[3]}`);
 
@@ -399,6 +399,18 @@ try {
   check("disconnect mid-post fails the post with a reason", vG?.status === "approved" && vG.publish_state === "failed" && /disconnected/.test(vG.publish_error ?? ""), JSON.stringify(vG));
   await page.goto(`${base}/review/${G}`);
   check("a failed post on a team with no account shows the manual flow and a connect link", (await page.textContent("body")).includes("connect this team") && (await page.getByRole("button", { name: "I posted it myself" }).isVisible()));
+  // Posting by hand gets the rendered file too (2026-11-01): G was rendered before its post, so
+  // the download is the captioned copy; once the render is stale the page offers to prepare it.
+  check("the by-hand flow says the download has the sound evened out", (await page.textContent("body")).includes("The download has the sound evened out"));
+  const [dlG] = await Promise.all([page.waitForEvent("download", { timeout: 20_000 }), page.getByRole("button", { name: "Download video" }).click()]);
+  check("the by-hand download is the rendered file", /-captioned\.mp4$/.test(dlG.suggestedFilename()), dlG.suggestedFilename());
+  await db.from("videos").update({ render_state: null, render_path: null, render_key: null }).eq("id", G);
+  await page.goto(`${base}/review/${G}`);
+  check("without a current render the by-hand flow offers to prepare the captioned video", await page.getByRole("button", { name: "prepare the captioned video" }).isVisible());
+  await page.getByRole("button", { name: "prepare the captioned video" }).click();
+  const preparedG = await until(async () => (await video(G, "render_state")).render_state === "done" ? true : null, 60_000);
+  await page.getByText("The download has the sound evened out").waitFor({ timeout: 20_000 });
+  check("preparing renders it and the page offers the captioned download", preparedG === true && (await page.textContent("body")).includes("The download has the sound evened out"));
 
   // Marking a video posted by hand asks first (on 2026-10-29 a lead took "Mark as posted"
   // for the post button while the connection was dead), and a video marked by mistake
