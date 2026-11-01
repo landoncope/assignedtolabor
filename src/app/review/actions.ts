@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { requireManager } from "@/lib/auth";
+import { isCueList, MAX_HEADLINE, retextCues } from "@/lib/caption-cues";
+import { captionsConfigured, retimeVideo, RETIME_COLS, type RetimeRow } from "@/lib/captions";
 import { parseCollaborators } from "@/lib/instagram";
 import { MAX_CAPTION, removeConnection, startPublish, type PublishOutcome } from "@/lib/instagram-publish";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -125,13 +127,13 @@ export async function decideLeadApplication(id: string, approve: boolean, note: 
 export async function deleteVideo(videoId: string) {
   await requireManager(`/review/${videoId}`);
   const supabase = await createClient();
-  const { data, error } = await supabase.from("videos").delete().eq("id", videoId).select("storage_path");
+  const { data, error } = await supabase.from("videos").delete().eq("id", videoId).select("storage_path, render_path");
   if (error) return { error: error.message };
   if (!data?.length) return { error: "You can't delete this video, or it is already gone." };
-  const path = data[0].storage_path as string | null;
-  if (path) {
-    const { error: rmErr } = await createAdminClient().storage.from("videos").remove([path]);
-    if (rmErr) console.error(`[review] deleted video ${videoId} but its file ${path} remains: ${rmErr.message}`);
+  const paths = [data[0].storage_path, data[0].render_path].filter((p): p is string => typeof p === "string" && p.length > 0);
+  if (paths.length) {
+    const { error: rmErr } = await createAdminClient().storage.from("videos").remove(paths);
+    if (rmErr) console.error(`[review] deleted video ${videoId} but its files ${paths.join(", ")} remain: ${rmErr.message}`);
   }
   revalidatePath("/review");
   return { ok: true };
@@ -162,6 +164,60 @@ export async function postToInstagram(videoId: string, captionRaw: string, colla
     publish_state: "queued", publish_requested_at: now, publish_requested_by: v.userId, publish_error: null, post_caption: caption || null,
     post_collaborators: collab.usernames.length ? collab.usernames : null,
   }).eq("id", videoId);
+  if (error) return { error: error.message };
+  const outcome = await startPublish(createAdminClient(), videoId);
+  revalidatePath("/review"); revalidatePath(`/review/${videoId}`);
+  return { ok: true, outcome };
+}
+
+/**
+ * The captions drawn into the video (2026-11-01): on or off, the headline ("" = none), and
+ * the words of each caption line (the timings stay). Through the caller's session, so RLS
+ * decides who may; the render step reads these when the post is made.
+ */
+export async function saveCaptions(videoId: string, input: { captionsOn: boolean; headline: string; texts: string[] }) {
+  await requireManager(`/review/${videoId}`);
+  const headline = (input.headline ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_HEADLINE);
+  const supabase = await createClient();
+  const { data: row, error: readErr } = await supabase.from("videos").select("caption_cues").eq("id", videoId).maybeSingle();
+  if (readErr) return { error: readErr.message };
+  if (!row) return { error: "Video not found." };
+  const cues = isCueList(row.caption_cues) ? retextCues(row.caption_cues, (input.texts ?? []).map((t) => String(t ?? ""))) : row.caption_cues;
+  const { error } = await supabase.from("videos").update({ captions_on: !!input.captionsOn, headline, caption_cues: cues }).eq("id", videoId);
+  if (error) return { error: error.message };
+  revalidatePath(`/review/${videoId}`);
+  return { ok: true };
+}
+
+/** Time the words now (a few seconds at the transcription service) so the lead can check the captions before posting. */
+export async function prepareCaptions(videoId: string) {
+  const v = await requireManager(`/review/${videoId}`);
+  if (!captionsConfigured()) return { error: "Transcription is not set up on this server." };
+  const supabase = await createClient();
+  const { data: mine } = await supabase.from("videos").select("id, area_id").eq("id", videoId).maybeSingle();
+  if (!mine) return { error: "Video not found." };
+  if (!(v.isAdmin || (mine.area_id && v.managedAreaIds.includes(mine.area_id)))) return { error: "You don't lead this video's team." };
+  const db = createAdminClient();
+  const { data: row } = await db.from("videos").select(RETIME_COLS).eq("id", videoId).maybeSingle();
+  if (!row) return { error: "Video not found." };
+  const r0 = row as unknown as RetimeRow;
+  // An empty word list marks an earlier failure; asking by hand asks the service again.
+  const r = await retimeVideo(db, Array.isArray(r0.transcript_words) && r0.transcript_words.length === 0 ? { ...r0, transcript_words: null } : r0).catch((e: unknown) => ({ cues: null, error: e instanceof Error ? e.message : String(e) }));
+  revalidatePath(`/review/${videoId}`);
+  if (!r.cues) return { error: `Could not prepare the captions: ${r.error ?? "no speech was found"}` };
+  return { ok: true };
+}
+
+/** The render failed: post the original file as it is (no captions, no headline, the sound as recorded). */
+export async function skipRender(videoId: string): Promise<{ ok: true; outcome: PublishOutcome } | { error: string }> {
+  const v = await requireManager(`/review/${videoId}`);
+  const supabase = await createClient();
+  const { data: row } = await supabase.from("videos").select("status, publish_state").eq("id", videoId).maybeSingle();
+  if (!row) return { error: "Video not found." };
+  if (row.status !== "approved") return { error: "Only an approved video can be posted." };
+  if (row.publish_state === "processing") return { error: "This video is already on its way to Instagram." };
+  const now = new Date().toISOString();
+  const { error } = await supabase.from("videos").update({ render_state: "skipped", render_error: null, publish_state: "queued", publish_requested_at: now, publish_requested_by: v.userId, publish_error: null }).eq("id", videoId);
   if (error) return { error: error.message };
   const outcome = await startPublish(createAdminClient(), videoId);
   revalidatePath("/review"); revalidatePath(`/review/${videoId}`);

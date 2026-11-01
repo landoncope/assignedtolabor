@@ -83,8 +83,8 @@ createServer(async (req, res) => {
     if (body.collaborators) { try { collaborators = JSON.parse(body.collaborators); } catch { return oauthError(res, 400, "Invalid parameter: collaborators must be a list of usernames", 100); } }
     if (state.nocollab && collaborators.length) { state.nocollab = false; return oauthError(res, 400, "Invalid parameter: collaborators", 100); }
     let fetchStatus = null;
-    try { const r = await fetch(body.video_url, { method: "HEAD" }); fetchStatus = r.status; state.fetched.push({ url: body.video_url.slice(0, 80), status: r.status, length: r.headers.get("content-length") }); }
-    catch (e) { state.fetched.push({ url: body.video_url.slice(0, 80), error: String(e) }); }
+    try { const r = await fetch(body.video_url, { method: "HEAD" }); fetchStatus = r.status; state.fetched.push({ url: body.video_url.split("?")[0], status: r.status, length: r.headers.get("content-length") }); }
+    catch (e) { state.fetched.push({ url: body.video_url.split("?")[0], error: String(e) }); }
     if (fetchStatus !== 200) return oauthError(res, 400, `The video file could not be fetched (HTTP ${fetchStatus ?? "error"})`, 9004);
     const id = `c-${state.containers.size + 1}`;
     state.containers.set(id, { id, caption: body.caption ?? "", collaborators, checks: 0, status_code: "IN_PROGRESS", fail: /MOCKFAIL/.test(body.caption ?? "") });

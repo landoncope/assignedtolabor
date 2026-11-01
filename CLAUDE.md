@@ -69,6 +69,14 @@ and a read-only probe found ALL FOUR teams' Instagram tokens rejected (code 190,
 English case of 10-27 was not alone); the publish cron now probes every connection
 daily and the leads are emailed to connect again ("Connection health" under the
 Instagram posting decision). Every team must Connect again before its next one-tap post.
+**2026-11-01: captions drawn into the video, collaborators, and the way back from a
+mistaken "posted".** Travis asked for captions, a description with hashtags, a headline
+and a collaborator on one-tap posts; the description and hashtags were already there,
+collaborators went live the same day, and after Landon's phone test showed Instagram
+puts no captions on our API posts he said "go" on rendering them ourselves: every
+one-tap post now re-encodes the file with the spoken words and a headline drawn in and
+the loudness evened out (see "Captions drawn into the video" under Decisions). Not yet
+seen on a real post: no team is connected until the leads reconnect.
 
 ### Where we paused (2026-11-01: every team must reconnect Instagram; the caption-rendering step awaits Landon's go)
 
@@ -305,13 +313,16 @@ Nothing is half-built. Pick up here.
   copied to ~/Downloads/atl-captions-sample/. Vercel Pro can run it without a new
   server: functions up to 800 s, 4 GB / 2 vCPU, 250 MB bundle (5 GB in beta), with
   ffmpeg from the `ffmpeg-static` package; a 1-minute clip should take about a
-  minute there. **Not built, waiting on Landon:** the render step (store Scribe's
-  word times from now on, a "Captions" switch with a timed preview over the player
-  and editable words, a headline box prefilled from a Claude suggestion, the burned
-  file posted instead of the original, the cron doing it when the lead leaves);
-  about two days with tests. Already-transcribed videos have no word times, so an
-  approved backlog would be re-transcribed once (English's 26 approved videos are
-  about 25 minutes of audio against the 91 a month).
+  minute there. Landon then tested Instagram's own captions on his phone (the viewer
+  switch on: none appeared on our Reel) and said "go": **the render step is BUILT**
+  the same day, see "Captions drawn into the video" under Decisions. What the first
+  real post will show: the time a real iPhone clip takes on Vercel's CPU (a minute per
+  minute of video is the guess; the function allows 800 s), how the captions read on a
+  phone, and whether Instagram accepts the re-encoded file (it should: plain H.264,
+  AAC 128 kbps, faststart, no edit lists). If rendering misbehaves in production,
+  `RENDER_DISABLED=1` in Vercel posts the originals as before. The approved backlog
+  (English's 26) is being re-transcribed for word times by the caption cron, three a
+  run, about 25 minutes of this month's 91 at ElevenLabs.
 
 ### After the 2026-09-19 event (do these, then delete this list)
 
@@ -738,8 +749,9 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     team's usual collaborators saved from the row, prefilled on the one-tap post, a
     bad username refused before anything is sent, the mock refusing the invite shows
     the reason and the hint, the list stored with the post and received by the mock,
-    the posted card naming the invitees). Its cron calls are scoped to its own rows
-    (see the cron above): real posts are in flight now.
+    the posted card naming the invitees), 92 later the same day (the render step, see
+    "Captions drawn into the video" under Decisions). Its cron calls are scoped to its
+    own rows (see the cron above): real posts are in flight now.
     The mock takes `/__config?badcode=1` to hand back a bad code once and
     `/__config?deadtoken=1` to reject the token (code 190) on the next Graph call.
     Against the real Instagram, two helpers: `node scripts/dev/instagram-live-test.mjs
@@ -830,7 +842,9 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     run, the real sweep and its order, the purged file, the review page and list, the
     two flip buttons, quota, three failed attempts, a garbage answer keeping the
     transcript, an outage counting nothing, the stored transcript reused, silence;
-    every run limited with `?only=` to the script's own videos. **Why: the local build
+    every run limited with `?only=` to the script's own videos; since 2026-11-01 also the
+    timed words, the cues and the headline stored with a new transcript, and an old
+    approved video retimed and headlined by the sweep (52 checks). **Why: the local build
     talks to the LIVE database, and the first run of this check (2026-10-15) ran the
     sweep unrestricted, which captioned five real approved videos with the mock's fake
     transcript; they were reset by hand within the minute, before anything was
@@ -912,6 +926,91 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     email and text links, a reminder really sent to Resend's test inbox and the
     second one refused, the notify dry run planning a `goal_reminder`, the stale
     refresh after a view, and a phone-width screenshot `shots/dashboard.png`.
+- **Captions drawn into the video (2026-11-01; Travis's asks 1 and 4, Landon's go).**
+  Every one-tap post now goes through a render step before the Reel container is
+  created: the file is re-encoded once with the spoken words drawn in as captions (on
+  by default), a headline at the top (optional), and the loudness brought to -16 LUFS
+  (iPhone browser recordings arrive 15 to 25 dB quiet, measured 2026-10-15). Migration
+  `20261101160000_caption_render.sql`: `videos.transcript_words` (Scribe's words with
+  times, `[{t,s,e}]`), `caption_cues` (`[{s,e,text}]`, grouped from the words, the
+  lead's to edit), `captions_on`, `headline`, `ai_headline` (Claude's suggestion,
+  adopted as the headline when none is set), `render_state` (queued, rendering, done,
+  failed, skipped), `render_path`, `render_key`, `render_error`, `render_attempts`,
+  `render_started_at`, `render_meta`; `guard_video_update` pins all of them for an
+  uploader editing their own pending video (`scripts/dev/render-sql-check.sh`).
+  - Code. `src/lib/caption-cues.ts` (pure, shared with the browser): words -> cues (at
+    most 56 characters or 3.5 s per cue, 22 characters for Chinese, Japanese and Korean,
+    which are joined without spaces; a break after a sentence; 0.1 s lead-in, 0.45 s
+    hold), `cueAt` for the preview, `retextCues` for the lead's edits, `MAX_HEADLINE`
+    60. `src/lib/render-state.ts` (server, no ffmpeg): `renderKey` (sha1 of the cues,
+    the headline and `RENDER_VERSION`; a rendered file is current only while its key
+    matches), `renderSkipReason` (videos over 12 minutes post as they are; so does
+    everything when `RENDER_DISABLED=1`). `src/lib/render.ts` (server): ffmpeg from the
+    `ffmpeg-static` package (ffmpeg 6.0 with libass, FreeType and x264 on both macOS
+    and Linux; `next.config.ts` lists it in `serverExternalPackages` and traces the
+    binary and `assets/fonts/**` into the render route and the publish cron with
+    `outputFileTracingIncludes`; if the deploy loses the mode bit the binary is copied
+    to /tmp and made executable). The captions are an ASS file (`buildAss`: PlayRes =
+    the frame as displayed, rotation applied; style Caption 64 px on a 1080 px wide
+    frame, white, bold, BorderStyle 4 box at 57% black, bottom edge at 75% of the
+    height, below a selfie's mouth and above Instagram's caption area; style Headline
+    76 px, top edge at 15.6%, below the strip the app covers) rendered by the
+    `subtitles` filter with `fontsdir=assets/fonts` (Noto Sans Bold; Noto Sans TC Bold
+    for Chinese, Japanese and Korean transcripts; OFL, licence in the folder). Loudness:
+    a first `loudnorm` pass measures (audio only, fast), the second applies it
+    linearly; output AAC 128 kbps 48 kHz. Video: libx264 veryfast crf 20, high profile,
+    yuv420p, faststart, frame rate capped at 60; when there is nothing to draw (captions
+    off, no headline) the picture is COPIED and only the sound re-encoded, seconds of
+    work. ffmpeg reads the original over its signed URL (nothing is downloaded first),
+    writes to /tmp, and the result is uploaded as `{original}-captioned.mp4` in the
+    same folder; the purge and Delete remove it with the original.
+  - Flow. `postToInstagram` queues the post as before; `startPublish` now posts the
+    rendered file when it is current, and otherwise sets `render_state = queued` and
+    answers `rendering: true` without asking Instagram. The review page then calls
+    `POST /api/videos/[id]/render` (a lead of the team, an admin, or the cron secret;
+    `maxDuration` 800) which claims the row (queued -> rendering, one worker), renders,
+    and calls `startPublish` itself, so the post continues the moment the file is
+    ready; the publish cron (`sweepRenders`, now `maxDuration` 800 too) renders one
+    waiting video per run for a page that was closed, taking over a "rendering" older
+    than 15 minutes. A failed render counts an attempt, fails the post with "Could not
+    add the captions to the video: ...", and the page offers Try again and "Post the
+    original file instead" (`skipRender`: `render_state = skipped`, then the original).
+    The size pre-check moved to the file being posted: an original over 300 MB is fine
+    if the rendered file is under. Words missing at render time (a video transcribed
+    before 2026-11-01) are fetched then by one Scribe call (`retimeVideo`, seconds);
+    without ElevenLabs configured the render goes ahead without captions and says so
+    in `render_meta.note`.
+  - The lead's side. On the review page, above the caption box, an "On the video" card
+    (`CaptionsCard.tsx`): the switch "Draw the spoken words on the video", "Check the
+    words (N lines)" with one input per line (timings kept), the Headline box
+    (prefilled with Claude's suggestion, "Use the suggestion" to get it back), Save
+    (`saveCaptions`, through the session so RLS decides), and "Prepare the captions"
+    (`prepareCaptions`, a Scribe call now) when the words are not timed yet. Unsaved
+    changes hold the post button. The player previews the cues and the headline over
+    the picture as the render will place them (`VideoPlayer` `overlay`: the picture's
+    rectangle inside the letterboxed box is measured, sizes follow its width; marked
+    "Preview", the real captions are drawn into the file). While the post waits for
+    the render the page says "Adding the captions to the video…"; the posted card
+    says what was drawn in. The caption sweep stores words and cues with every new
+    transcript, asks Claude for a `headline` with the caption (two to six words, the
+    hook, in the speaker's language), and has two more branches, three videos a run
+    each: approved videos transcribed before word times were kept are transcribed
+    again (`retimed`), and captions drafted before headlines existed get one
+    (`headlined`, the same draft keeping only its headline).
+  - Switches: `RENDER_DISABLED=1` (post originals), `RENDER_TEST_HOOKS=1` (tests: a
+    headline of RENDERFAIL fails the render). Vercel: the functions' memory is the
+    plan default (2 GB, 1 vCPU); if real clips take too long, the dashboard can set
+    4 GB / 2 vCPU for all functions. Tests: the Instagram flow check (a video with
+    timed words, three cues and a headline is rendered before the post, the mock
+    fetches the captioned file, a frame at 2 s is darker where the caption and the
+    headline boxes sit, the posted card says so; an edited line must be saved before
+    the post; captions off and no headline copies the picture; a failed render fails
+    the post and the original can be posted instead; the cron queues, renders and
+    posts a post whose page is gone), the captions check (words, cues and the headline
+    stored; an old approved video retimed and headlined by the sweep), and
+    `scripts/dev/render-sql-check.sh` (4 rolled-back checks). Prototype that led
+    here: `proto/burn.py` in the session scratchpad and the sample clips in
+    ~/Downloads/atl-captions-sample/.
 - **One-tap posting, researched 2026-10-03** (primary sources read that day by a
   research agent; notes in the session scratchpad are not kept, so the facts are here):
   - Instagram, with "Instagram API with Instagram Login" (permissions
@@ -1015,13 +1114,17 @@ src/lib/instagram-notice.ts the ?instagram_connected / ?instagram_error notice a
 src/lib/captions.ts         AI-suggested captions: ElevenLabs transcript + Claude draft, the sweep (service role)
 src/lib/goals.ts            upload goals: the four cadences, the countdown, when a reminder is due
 src/lib/instagram-stats.ts  the team's Instagram numbers for the dashboard, cached in instagram_stats
+src/lib/caption-cues.ts     timed words -> caption cues, the preview's cueAt, the lead's edits (pure, shared)
+src/lib/render-state.ts     renderKey / renderCurrent / renderSkipReason: the publish flow's view of the render step
+src/lib/render.ts           the render step: ffmpeg (ffmpeg-static) draws the ASS captions and headline, normalises loudness
+assets/fonts/               Noto Sans Bold and Noto Sans TC Bold (OFL) for the captions, traced into the render functions
 src/components/             Nav, VideoRecorder (multi-clip + teleprompter), VideoPlayer (signed URL),
                             InstagramConnections (connect/disconnect a team's account)
 src/app/                    / landing, /upload flow, /qr poster, /login, /auth/*, /my (the
                             dashboard: team numbers, upload goal, the lead's view, my videos),
                             /my/teams (join/start a team), /lead (+/video: team lead
                             application), /review (+/[id], /requests), /admin,
-                            /api/videos/[id]/{playback-url,publish-status},
+                            /api/videos/[id]/{playback-url,publish-status,render},
                             /api/lead-applications/[id]/playback-url,
                             /api/instagram/{connect,callback,deauthorize,data-deletion},
                             /api/cron/{purge,notify,publish,captions}
@@ -1039,8 +1142,8 @@ refuses to inject it, so browser tests of gated pages use Landon's real sign-in.
 Tests that need NO captcha change (they never sign in anonymously or by password):
 `scripts/dev/lead-sql-check.sh` (44 rule checks as throwaway users inside one
 rolled-back transaction, by setting the JWT claims Postgres sees),
-`scripts/dev/profiles-guard-check.sh` (8) and `scripts/dev/dashboard-sql-check.sh`
-(23, same harness) and
+`scripts/dev/profiles-guard-check.sh` (8), `scripts/dev/dashboard-sql-check.sh`
+(23, same harness), `scripts/dev/render-sql-check.sh` (4) and
 `node scripts/dev/lead-flow-check.mjs http://localhost:3001 fake-cam.y4m [dir]` (44
 browser checks of the team lead application; build and start with
 `NEXT_PUBLIC_TURNSTILE_SITE_KEY= NEXT_PUBLIC_SITE_URL=http://localhost:3001`). Their
@@ -1488,7 +1591,8 @@ redirects to localhost and the sign-in cookie does not follow across hostnames.
   id and secret, not the Meta app's; see "Meta app" under Account setup),
   `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SITE_URL`, `CRON_SECRET`, `RESEND_API_KEY`,
   `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `ELEVENLABS_API_KEY`, `ANTHROPIC_API_KEY` (2026-10-15,
-  AI captions; optional `CAPTION_MODEL`), `INSTAGRAM_INSIGHTS` (2026-10-30, optional,
+  AI captions; optional `CAPTION_MODEL`), `RENDER_DISABLED` and `RENDER_TEST_HOOKS`
+  (2026-11-01, optional; see "Captions drawn into the video"), `INSTAGRAM_INSIGHTS` (2026-10-30, optional,
   `1` asks for the insights permission at Connect; see Dashboard under Decisions).
   Template in `.env.example`.
 

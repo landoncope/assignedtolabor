@@ -1,15 +1,18 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { isCueList } from "@/lib/caption-cues";
 import { pictureWarning } from "@/lib/capture-meta";
-import { areaLabel, type Area, type PublishState, type VideoWithArea } from "@/lib/types";
-import { approveVideo, assignArea, deleteVideo, markPosted, postToInstagram, rejectVideo, reopenVideo, unpostVideo } from "../actions";
+import { areaLabel, type Area, type PublishState, type RenderState, type VideoWithArea } from "@/lib/types";
+import { approveVideo, assignArea, deleteVideo, markPosted, postToInstagram, rejectVideo, reopenVideo, skipRender, unpostVideo } from "../actions";
+import CaptionsCard from "./CaptionsCard";
 
 const MAX_CAPTION = 2200;
-type Publish = { state: PublishState | null; error: string | null; detail?: string | null; postUrl?: string | null };
+type Render = { state: RenderState | null; error: string | null } | null;
+type Publish = { state: PublishState | null; error: string | null; detail?: string | null; postUrl?: string | null; rendering?: boolean; render?: Render };
 
-export default function ReviewActions({ video, areas, caption: scriptCaption, isAdmin, canConnect }: { video: VideoWithArea; areas: Area[]; caption: string; isAdmin: boolean; canConnect: boolean }) {
+export default function ReviewActions({ video, areas, caption: scriptCaption, isAdmin, canConnect, canPrepare }: { video: VideoWithArea; areas: Area[]; caption: string; isAdmin: boolean; canConnect: boolean; canPrepare: boolean }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
@@ -24,12 +27,31 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmPosted, setConfirmPosted] = useState(false);
   const [confirmUnpost, setConfirmUnpost] = useState(false);
-  const [publish, setPublish] = useState<Publish>({ state: video.publish_state, error: video.publish_error });
+  const [publish, setPublish] = useState<Publish>({ state: video.publish_state, error: video.publish_error, render: { state: video.render_state, error: video.render_error } });
+  const [captionsDirty, setCaptionsDirty] = useState(false);
+  const onCaptionsDirty = useCallback((d: boolean) => setCaptionsDirty(d), []);
+  const renderStarted = useRef(false);
   const router = useRouter();
 
   const connected = Boolean(video.area?.instagram_user_id);
   const handle = (video.area?.instagram_handle ?? "").replace(/^@/, "");
   const inFlight = video.status !== "posted" && (publish.state === "queued" || publish.state === "processing");
+  const rendering = inFlight && publish.state === "queued" && (publish.render?.state === "queued" || publish.render?.state === "rendering" || !!publish.rendering);
+
+  // The render step (2026-11-01): a queued post waits for its render, which this page starts
+  // (the route takes a minute or more; the cron does it if the page is gone).
+  const startRender = useCallback(() => {
+    if (renderStarted.current) return;
+    renderStarted.current = true;
+    fetch(`/api/videos/${video.id}/render`, { method: "POST" }).then(async (r) => {
+      const j = (await r.json().catch(() => null)) as { publish?: Publish; render?: { ok: boolean; error?: string; busy?: boolean } } | null;
+      const pub = j?.publish;
+      if (pub) setPublish((p) => ({ ...p, ...pub, render: j?.render?.ok ? { state: "done", error: null } : (j?.render ? { state: "failed", error: j.render.error ?? null } : p.render) }));
+      else if (j?.render && !j.render.ok && !j.render.busy) setPublish({ state: "failed", error: `Could not add the captions to the video: ${j.render.error ?? "unknown error"}`, render: { state: "failed", error: j.render.error ?? null } });
+      router.refresh();
+    }).catch(() => { renderStarted.current = false; });
+  }, [video.id, router]);
+  useEffect(() => { if (rendering) startRender(); }, [rendering, startRender]);
   // A frozen picture (the iPhone recordings of 2026-09-19): Instagram refuses the file, so
   // there is no one-tap button, only the reason. The server refuses it too (fileProblem).
   const frozen = video.capture_meta ? pictureWarning(video.capture_meta) : null;
@@ -70,7 +92,8 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
     start(async () => {
       const r = await postToInstagram(video.id, caption, collaborators);
       if ("error" in r) { setError(r.error); return; }
-      setPublish(r.outcome);
+      renderStarted.current = false;
+      setPublish({ ...r.outcome, render: r.outcome.rendering ? { state: "queued", error: null } : publish.render });
       if (r.outcome.state === "published" || r.outcome.state === "failed") router.refresh();
     });
   }
@@ -108,6 +131,15 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
       </span>
     </label>
   );
+
+  const captionsCard = (
+    <CaptionsCard
+      videoId={video.id} cues={isCueList(video.caption_cues) ? video.caption_cues : null} captionsOn={video.captions_on} headline={video.headline} aiHeadline={video.ai_headline || null}
+      hasWords={Array.isArray(video.transcript_words)} canPrepare={canPrepare} renderState={video.render_state} renderError={video.render_error} disabled={pending || inFlight} onDirty={onCaptionsDirty}
+    />
+  );
+  const postDisabled = pending || captionsDirty;
+  const dirtyNote = captionsDirty && <p className="text-xs text-gold">Save the captions first.</p>;
 
   const collaboratorBox = (
     <label className="block">
@@ -161,9 +193,11 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
 
       {inFlight && (
         <div className="card">
-          <div className="font-semibold">Sending to Instagram…</div>
+          <div className="font-semibold">{rendering ? "Adding the captions to the video…" : "Sending to Instagram…"}</div>
           <p className="mt-1 text-sm text-muted">
-            Instagram is processing the video{publish.detail ? ` (${publish.detail})` : ""}. This usually takes under a minute. You can leave this page; the post finishes on its own.
+            {rendering
+              ? "The words and the headline are being drawn into the video and the sound level evened out. About a minute for each minute of video; then it goes to Instagram. You can leave this page; the post finishes on its own."
+              : <>Instagram is processing the video{publish.detail ? ` (${publish.detail})` : ""}. This usually takes under a minute. You can leave this page; the post finishes on its own.</>}
           </p>
         </div>
       )}
@@ -171,8 +205,8 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
       {video.status === "pending" && !inFlight && (
         <div className="card flex flex-col gap-3">
           {frozenNote}
-          {connected && !frozen && <>{captionBox}{collaboratorBox}</>}
-          {connected && !frozen && <button onClick={post} disabled={pending} className="btn-primary py-3">Approve and post to @{handle}</button>}
+          {connected && !frozen && <>{captionsCard}{captionBox}{collaboratorBox}{dirtyNote}</>}
+          {connected && !frozen && <button onClick={post} disabled={postDisabled} className="btn-primary py-3">Approve and post to @{handle}</button>}
           <button onClick={() => run(() => approveVideo(video.id))} disabled={pending} className={connected || frozen ? "btn-secondary" : "btn-primary py-3"}>{frozen ? "Approve anyway" : connected ? "Approve only, post later" : "Approve"}</button>
           <details>
             <summary className="cursor-pointer text-sm text-muted">Not selecting this one</summary>
@@ -191,9 +225,14 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
           )}
           {connected && !frozen ? (
             <>
+              {captionsCard}
               {captionBox}
               {collaboratorBox}
-              <button onClick={post} disabled={pending} className="btn-primary py-3">{publish.state === "failed" ? `Try again on @${handle}` : `Post to @${handle} now`}</button>
+              {dirtyNote}
+              <button onClick={post} disabled={postDisabled} className="btn-primary py-3">{publish.state === "failed" ? `Try again on @${handle}` : `Post to @${handle} now`}</button>
+              {publish.state === "failed" && publish.render?.state === "failed" && (
+                <button onClick={() => { setError(""); start(async () => { const r = await skipRender(video.id); if ("error" in r) { setError(r.error); return; } renderStarted.current = false; setPublish({ ...r.outcome, render: { state: "skipped", error: null } }); if (r.outcome.state === "published" || r.outcome.state === "failed") router.refresh(); }); }} disabled={pending} className="btn-secondary">Post the original file instead (no captions)</button>
+              )}
               <details>
                 <summary className="cursor-pointer text-sm text-muted">Post it by hand instead</summary>
                 <div className="mt-2 flex flex-col gap-3">{manualPost}</div>
@@ -224,6 +263,9 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
             ? <>Posted {video.posted_at ? new Date(video.posted_at).toLocaleString() : ""}{handle ? <> on <b>@{handle}</b></> : ""}.</>
             : <>Marked as posted by hand {video.posted_at ? new Date(video.posted_at).toLocaleString() : ""}.{video.post_url ? "" : " No link to the post was given."}</>}
           {video.post_url && <> <a href={video.post_url} target="_blank" rel="noreferrer" className="text-accent underline">Open post</a></>}
+          {video.post_media_id && video.render_meta && (video.render_meta.cues > 0 || video.render_meta.headline) && (
+            <p className="mt-1">{video.render_meta.cues > 0 ? "The captions" : "The headline"}{video.render_meta.cues > 0 && video.render_meta.headline ? " and the headline" : ""} were drawn into the posted video.</p>
+          )}
           {video.post_media_id && video.post_collaborators && video.post_collaborators.length > 0 && (
             <p className="mt-1">Collaborator invite sent to {video.post_collaborators.map((u) => `@${u}`).join(", ")}; the Reel appears on their profile once they accept in Instagram.</p>
           )}

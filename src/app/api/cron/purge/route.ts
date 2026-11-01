@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 
   const { data: rows, error } = await supabase
     .from("videos")
-    .select("id, storage_path, status, posted_at, reviewed_at")
+    .select("id, storage_path, render_path, status, posted_at, reviewed_at")
     .is("file_purged_at", null)
     .not("storage_path", "is", null)
     .or(`and(status.eq.posted,posted_at.lt.${cutoff}),and(status.eq.rejected,reviewed_at.lt.${cutoff})`)
@@ -31,9 +31,10 @@ export async function GET(request: NextRequest) {
   let purged = 0;
   const failures: string[] = [];
   for (const v of rows ?? []) {
-    const { error: rmErr } = await supabase.storage.from("videos").remove([v.storage_path as string]);
+    // The rendered file (captions drawn in, 2026-11-01) goes with the original.
+    const { error: rmErr } = await supabase.storage.from("videos").remove([v.storage_path as string, ...(v.render_path ? [v.render_path as string] : [])]);
     if (rmErr) { failures.push(`${v.id}: ${rmErr.message}`); continue; }
-    const { error: upErr } = await supabase.from("videos").update({ file_purged_at: new Date().toISOString(), storage_path: null }).eq("id", v.id);
+    const { error: upErr } = await supabase.from("videos").update({ file_purged_at: new Date().toISOString(), storage_path: null, render_path: null }).eq("id", v.id);
     if (upErr) failures.push(`${v.id}: ${upErr.message}`); else purged++;
   }
 

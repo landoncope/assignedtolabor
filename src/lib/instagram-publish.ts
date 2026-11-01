@@ -2,6 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { pictureWarning, type CaptureMeta } from "@/lib/capture-meta";
 import * as ig from "@/lib/instagram";
 import type { PublishState, Script } from "@/lib/types";
+import { renderCurrent, renderSkipReason } from "./render-state";
+import type { RenderMeta } from "./types";
 
 /**
  * One-tap publishing to Instagram, server side with the service role. The callers
@@ -21,7 +23,7 @@ export const MAX_CAPTION = 2200;
 export const REFRESH_BEFORE_DAYS = 10;
 
 type Db = SupabaseClient;
-export type PublishOutcome = { state: PublishState | null; error: string | null; postUrl: string | null; detail?: string | null };
+export type PublishOutcome = { state: PublishState | null; error: string | null; postUrl: string | null; detail?: string | null; rendering?: boolean };
 
 type VideoRow = {
   id: string; area_id: string | null; status: string; storage_path: string | null; file_purged_at: string | null;
@@ -29,8 +31,11 @@ type VideoRow = {
   publish_state: PublishState | null; publish_container_id: string | null; publish_requested_by: string | null;
   publish_attempts: number; post_caption: string | null; ai_caption: string | null; post_url: string | null; publish_error: string | null;
   post_collaborators: string[] | null; capture_meta: CaptureMeta | null;
+  // the render step (2026-11-01)
+  caption_cues: unknown; captions_on: boolean; headline: string | null;
+  render_state: string | null; render_path: string | null; render_key: string | null; render_meta: RenderMeta | null;
 };
-const VIDEO_COLS = "id, area_id, status, storage_path, file_purged_at, duration_seconds, file_size, script, publish_state, publish_container_id, publish_requested_by, publish_attempts, post_caption, ai_caption, post_url, publish_error, post_collaborators, capture_meta";
+const VIDEO_COLS = "id, area_id, status, storage_path, file_purged_at, duration_seconds, file_size, script, publish_state, publish_container_id, publish_requested_by, publish_attempts, post_caption, ai_caption, post_url, publish_error, post_collaborators, capture_meta, caption_cues, captions_on, headline, render_state, render_path, render_key, render_meta";
 
 type AccountRow = { area_id: string; ig_user_id: string; username: string | null; access_token: string; token_expires_at: string | null };
 
@@ -134,9 +139,25 @@ export async function startPublish(db: Db, videoId: string): Promise<PublishOutc
   if (!v.area_id) return fail(db, v.id, "This video has no team, so there is no Instagram account to post to.");
   const acct = await loadAccount(db, v.area_id);
   if (!acct) return fail(db, v.id, "This team has no Instagram account connected.");
-  const problem = fileProblem(v);
+  const problem = fileProblem({ ...v, file_size: null }); // the size that matters is the file we post, below
   if (problem) return fail(db, v.id, problem);
-  const { data: signed, error: signErr } = await db.storage.from("videos").createSignedUrl(v.storage_path!, SIGNED_URL_SECONDS);
+  // The render step (2026-11-01): post the rendered file (captions, headline, loudness) when it
+  // is current for the video's cues and headline; otherwise queue a render, which the render
+  // route (the lead's page) or the publish cron carries out before calling here again.
+  let postPath = v.storage_path!;
+  let postBytes = v.file_size;
+  if (v.render_state === "skipped") { /* the lead chose the original, or it is too long to render */ }
+  else if (renderCurrent(v)) { postPath = v.render_path!; postBytes = v.render_meta?.bytes ?? null; }
+  else {
+    const skip = renderSkipReason(v);
+    if (skip) await db.from("videos").update({ render_state: "skipped", render_error: skip }).eq("id", v.id);
+    else {
+      if (v.render_state !== "queued" && v.render_state !== "rendering") await db.from("videos").update({ render_state: "queued", render_error: null }).eq("id", v.id);
+      return { state: "queued", error: null, postUrl: null, rendering: true };
+    }
+  }
+  if (postBytes && postBytes > MAX_BYTES) return fail(db, v.id, `The file is ${(postBytes / 1048576).toFixed(0)} MB${postPath !== v.storage_path ? " even after rendering" : ""}; Instagram takes Reels up to 300 MB.`);
+  const { data: signed, error: signErr } = await db.storage.from("videos").createSignedUrl(postPath, SIGNED_URL_SECONDS);
   if (signErr || !signed) return fail(db, v.id, `Could not make a link to the file: ${signErr?.message ?? "unknown error"}`);
   const caption = (v.post_caption ?? v.ai_caption ?? captionFor(v.script)).slice(0, MAX_CAPTION);
   const collaborators = v.post_collaborators ?? [];

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { cuesFromWords, isWordList, MAX_HEADLINE, wordsFromScribe, type Cue, type Word } from "./caption-cues";
 import type { Script } from "./types";
 
 /**
@@ -43,7 +44,7 @@ const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const str = (v: unknown) => (typeof v === "string" && v ? v : null);
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
-export type Transcript = { text: string; languageCode: string | null; probability: number | null; durationSeconds: number | null };
+export type Transcript = { text: string; languageCode: string | null; probability: number | null; durationSeconds: number | null; words: Word[] | null };
 
 /** ElevenLabs Scribe: one request with the file's URL; the answer is the whole transcript. */
 export async function transcribe(fileUrl: string): Promise<Transcript> {
@@ -54,6 +55,7 @@ export async function transcribe(fileUrl: string): Promise<Transcript> {
   form.set("source_url", fileUrl);
   form.set("tag_audio_events", "false");
   form.set("diarize", "false");
+  form.set("timestamps_granularity", "word"); // the words with their times, for the captions drawn into the video (2026-11-01)
   let res: Response;
   try {
     res = await fetch(`${STT_BASE}/v1/speech-to-text`, { method: "POST", headers: { "xi-api-key": key }, body: form, signal: AbortSignal.timeout(240_000) });
@@ -62,12 +64,13 @@ export async function transcribe(fileUrl: string): Promise<Transcript> {
   }
   const body: unknown = await res.json().catch(() => null);
   if (!res.ok) throw sttError(res.status, body);
-  const b = (body ?? {}) as { text?: unknown; language_code?: unknown; language_probability?: unknown; audio_duration_secs?: unknown };
+  const b = (body ?? {}) as { text?: unknown; language_code?: unknown; language_probability?: unknown; audio_duration_secs?: unknown; words?: unknown };
   return {
     text: typeof b.text === "string" ? b.text.trim() : "",
     languageCode: str(b.language_code),
     probability: num(b.language_probability),
     durationSeconds: num(b.audio_duration_secs),
+    words: wordsFromScribe(b.words),
   };
 }
 
@@ -98,18 +101,20 @@ export type DraftInput = {
   teamLanguage: string | null;
   durationSeconds: number | null;
 };
-export type Draft = { caption: string; summary: string };
+export type Draft = { caption: string; summary: string; headline: string };
 
 const SYSTEM = `You write Instagram captions for Assigned To Labor, a volunteer project in which members and friends of The Church of Jesus Christ of Latter-day Saints record short videos about their faith. Each video is reviewed by a volunteer team lead and posted on the team's Instagram account as a Reel. You are given an automatic transcript of one video (it may contain recognition errors), the language the speaker said they would use, the script they planned (if any; people often depart from it), the team, and the speaker's first name if they gave one.
 
-Write two things and answer with JSON only, in exactly this shape:
-{"caption": "...", "summary": "..."}
+Write three things and answer with JSON only, in exactly this shape:
+{"caption": "...", "summary": "...", "headline": "..."}
 
 caption: the Instagram caption, written in the language the speaker actually uses in the transcript (if the transcript is in Tagalog, write Tagalog; if it mixes languages, use the main one). Written the way the team would present this person's words: open with the strongest thought they expressed, quoting a short phrase of theirs where it helps; stay faithful to what they said and add no claims, names, places, scripture references or doctrine they did not say; if they made an invitation (to pray, to read, to learn more, to visit a meeting), end with it in a gentle sentence of their own words; then, on a last line, 3 to 6 relevant hashtags in that language or in English. If a first name is given you may use it; never invent one. Plain text, no markdown, at most one emoji, no mention of a transcript or a recording. Aim for 300 to 700 characters; the hard limit is 2200.
 
 summary: one sentence in English, at most 160 characters, telling the team lead what the person talks about, so they know before watching. Mention anything a reviewer should notice, such as the speaker naming a third person or a sensitive personal detail.
 
-If the transcript has no usable speech, answer {"caption": "", "summary": "No usable speech in the transcript."}.`;
+headline: two to six words drawn at the top of the video for its whole length, in the language the speaker uses: the hook, a thought of theirs or the question they answer, plain words, no hashtags, no emoji, no quotation marks, no full stop at the end. Empty if nothing fits.
+
+If the transcript has no usable speech, answer {"caption": "", "summary": "No usable speech in the transcript.", "headline": ""}.`;
 
 function userMessage(i: DraftInput): string {
   const planned = i.script && (i.script.hook || i.script.body || i.script.cta)
@@ -167,14 +172,15 @@ export function parseDraft(text: string): Draft {
   if (start < 0 || end <= start) throw new CaptionError("Claude did not return the expected JSON", "retry");
   let parsed: unknown;
   try { parsed = JSON.parse(text.slice(start, end + 1)); } catch { throw new CaptionError("Claude returned unreadable JSON", "retry"); }
-  const o = (parsed ?? {}) as { caption?: unknown; summary?: unknown };
+  const o = (parsed ?? {}) as { caption?: unknown; summary?: unknown; headline?: unknown };
   const caption = (typeof o.caption === "string" ? o.caption : "").trim().slice(0, MAX_CAPTION);
   const summary = (typeof o.summary === "string" ? o.summary : "").trim().slice(0, MAX_SUMMARY);
-  return { caption, summary };
+  const headline = (typeof o.headline === "string" ? o.headline : "").replace(/[\r\n#"“”]+/g, " ").replace(/\s+/g, " ").trim().replace(/[.。]+$/, "").slice(0, MAX_HEADLINE);
+  return { caption, summary, headline };
 }
 
 /** What the sweep reads for each video. */
-export const CAPTION_COLS = "id, status, storage_path, file_purged_at, duration_seconds, language, script, uploader_name, transcript, transcript_language, transcript_confidence, caption_attempts, area:areas(name, language)";
+export const CAPTION_COLS = "id, status, storage_path, file_purged_at, duration_seconds, language, script, uploader_name, transcript, transcript_language, transcript_confidence, transcript_words, caption_attempts, area:areas(name, language)";
 export type CaptionRow = {
   id: string;
   status: string;
@@ -187,10 +193,11 @@ export type CaptionRow = {
   transcript: string | null;
   transcript_language: string | null;
   transcript_confidence: number | null;
+  transcript_words: unknown;
   caption_attempts: number;
   area: { name: string; language: string } | null;
 };
-export type CaptionOutcome = { id: string; result: "done" | "skipped" | "failed" | "deferred" | "would"; detail?: string; language?: string | null };
+export type CaptionOutcome = { id: string; result: "done" | "skipped" | "failed" | "deferred" | "would" | "retimed" | "headlined"; detail?: string; language?: string | null };
 
 /** Why a file is not worth sending, or null. */
 export function fileProblem(v: Pick<CaptionRow, "storage_path" | "file_purged_at" | "duration_seconds">): string | null {
@@ -209,13 +216,15 @@ export async function captionVideo(db: SupabaseClient, v: CaptionRow): Promise<C
   try {
     let t: Transcript;
     if (v.transcript !== null) {
-      t = { text: v.transcript, languageCode: v.transcript_language, probability: v.transcript_confidence, durationSeconds: v.duration_seconds };
+      t = { text: v.transcript, languageCode: v.transcript_language, probability: v.transcript_confidence, durationSeconds: v.duration_seconds, words: isWordList(v.transcript_words) ? v.transcript_words : null };
     } else {
       const { data: signed, error: signErr } = await db.storage.from("videos").createSignedUrl(v.storage_path!, SIGNED_URL_SECONDS);
       if (signErr || !signed?.signedUrl) throw new CaptionError(`Could not sign the file URL: ${signErr?.message ?? "no URL"}`, "retry");
       t = await transcribe(signed.signedUrl);
       // Keep the transcript at once: if the draft fails, the next try does not pay for the audio again.
-      await db.from("videos").update({ transcript: t.text, transcript_language: t.languageCode, transcript_confidence: t.probability }).eq("id", v.id);
+      // The words with their times become the caption cues the lead sees and the render draws.
+      const words = t.words ?? [];
+      await db.from("videos").update({ transcript: t.text, transcript_language: t.languageCode, transcript_confidence: t.probability, transcript_words: words, caption_cues: cuesFromWords(words, t.languageCode) }).eq("id", v.id);
     }
     if (!t.text) {
       await db.from("videos").update({ caption_state: "skipped", caption_error: "No speech was found in the audio." }).eq("id", v.id).is("caption_state", null);
@@ -229,7 +238,8 @@ export async function captionVideo(db: SupabaseClient, v: CaptionRow): Promise<C
       await db.from("videos").update({ caption_state: "skipped", caption_error: d.summary || "No usable speech.", ai_summary: d.summary || null }).eq("id", v.id).is("caption_state", null);
       return { id: v.id, result: "skipped", detail: d.summary || "No usable speech.", language: t.languageCode };
     }
-    await db.from("videos").update({ ai_caption: d.caption, ai_summary: d.summary || null, caption_state: "done", captioned_at: new Date().toISOString(), caption_error: null }).eq("id", v.id).is("caption_state", null);
+    await db.from("videos").update({ ai_caption: d.caption, ai_summary: d.summary || null, ai_headline: d.headline || "", caption_state: "done", captioned_at: new Date().toISOString(), caption_error: null }).eq("id", v.id).is("caption_state", null);
+    if (d.headline) await db.from("videos").update({ headline: d.headline }).eq("id", v.id).is("headline", null);
     return { id: v.id, result: "done", language: t.languageCode };
   } catch (e) {
     const err = e instanceof CaptionError ? e : new CaptionError(msg(e), "retry");
@@ -273,7 +283,75 @@ export async function sweepCaptions(db: SupabaseClient, dry: boolean, opts: { li
     if (dry) { const p = fileProblem(v); out.push({ id: v.id, result: p ? "skipped" : "would", detail: p ?? (v.transcript !== null ? "draft from the stored transcript" : "transcribe and draft") }); continue; }
     const o = await captionVideo(db, v);
     out.push(o);
-    if (o.result === "deferred" && !/attempt \d/.test(o.detail ?? "")) break;
+    if (o.result === "deferred" && !/attempt \d/.test(o.detail ?? "")) return out;
+  }
+  // Then (2026-11-01) the word times for approved videos transcribed before we kept them,
+  // and a headline for captions drafted before headlines existed; a few of each per run.
+  let rq = db.from("videos").select(RETIME_COLS).eq("status", "approved").is("transcript_words", null).not("transcript", "is", null).not("storage_path", "is", null).is("file_purged_at", null);
+  if (opts.only) rq = rq.in("id", opts.only);
+  const { data: rrows } = await rq.order("created_at", { ascending: false }).limit(opts.limit ?? PER_SWEEP);
+  for (const v of (rrows ?? []) as unknown as RetimeRow[]) {
+    if (dry) { out.push({ id: v.id, result: "would", detail: "transcribe again for the word times" }); continue; }
+    try { const r = await retimeVideo(db, v); out.push({ id: v.id, result: "retimed", detail: r.cues ? `${r.cues.length} cues` : r.error }); }
+    catch (e) { const err = e instanceof CaptionError ? e : new CaptionError(msg(e), "retry"); out.push({ id: v.id, result: "deferred", detail: err.message }); if (err.kind === "stop") return out; }
+  }
+  let hq = db.from("videos").select(CAPTION_COLS).eq("caption_state", "done").is("ai_headline", null).not("transcript", "is", null).in("status", ["pending", "approved"]);
+  if (opts.only) hq = hq.in("id", opts.only);
+  const { data: hrows } = await hq.order("status", { ascending: true }).order("created_at", { ascending: false }).limit(opts.limit ?? PER_SWEEP);
+  for (const v of (hrows ?? []) as unknown as CaptionRow[]) {
+    if (dry) { out.push({ id: v.id, result: "would", detail: "suggest a headline from the stored transcript" }); continue; }
+    try { out.push({ id: v.id, result: "headlined", detail: await headlineOnly(db, v) }); }
+    catch (e) { const err = e instanceof CaptionError ? e : new CaptionError(msg(e), "retry"); out.push({ id: v.id, result: "deferred", detail: err.message }); if (err.kind === "stop") return out; }
   }
   return out;
+}
+
+/* ───────────── the words with their times, for videos we transcribed before keeping them ───────────── */
+
+export const RETIME_COLS = "id, status, storage_path, file_purged_at, duration_seconds, transcript, transcript_language, transcript_words";
+export type RetimeRow = {
+  id: string; status: string; storage_path: string | null; file_purged_at: string | null; duration_seconds: number | null;
+  transcript: string | null; transcript_language: string | null; transcript_words: unknown;
+};
+
+/**
+ * Make the caption cues: from the stored words when we have them, else by transcribing
+ * again (Scribe takes a few seconds; the audio minutes count against the month). A file
+ * the service cannot read is marked with an empty word list so the sweep stops asking;
+ * "Prepare captions" on the review page asks again.
+ */
+export async function retimeVideo(db: SupabaseClient, v: RetimeRow): Promise<{ cues: Cue[] | null; error?: string }> {
+  if (isWordList(v.transcript_words)) {
+    const cues = cuesFromWords(v.transcript_words, v.transcript_language);
+    await db.from("videos").update({ caption_cues: cues }).eq("id", v.id);
+    return cues.length ? { cues } : { cues: null, error: "no speech was found" };
+  }
+  const skip = fileProblem(v);
+  if (skip) return { cues: null, error: skip };
+  const { data: signed, error: signErr } = await db.storage.from("videos").createSignedUrl(v.storage_path!, SIGNED_URL_SECONDS);
+  if (signErr || !signed?.signedUrl) throw new CaptionError(`Could not sign the file URL: ${signErr?.message ?? "no URL"}`, "retry");
+  let t: Transcript;
+  try { t = await transcribe(signed.signedUrl); }
+  catch (e) {
+    if (e instanceof CaptionError && e.kind === "retry") await db.from("videos").update({ transcript_words: [], caption_error: e.message }).eq("id", v.id);
+    throw e;
+  }
+  const words = t.words ?? [];
+  const cues = cuesFromWords(words, t.languageCode ?? v.transcript_language);
+  await db.from("videos").update({
+    transcript_words: words, caption_cues: cues,
+    ...(v.transcript === null ? { transcript: t.text, transcript_language: t.languageCode, transcript_confidence: t.probability } : {}),
+  }).eq("id", v.id);
+  return cues.length ? { cues } : { cues: null, error: "no speech was found" };
+}
+
+/** A headline for a video captioned before headlines existed: the same draft, keeping only its headline. */
+export async function headlineOnly(db: SupabaseClient, v: CaptionRow): Promise<string> {
+  const d = await draftCaption({
+    transcript: v.transcript ?? "", transcriptLanguage: v.transcript_language, declaredLanguage: v.language, script: v.script, uploaderName: v.uploader_name,
+    teamName: v.area?.name ?? null, teamLanguage: v.area?.language ?? null, durationSeconds: v.duration_seconds,
+  });
+  await db.from("videos").update({ ai_headline: d.headline || "" }).eq("id", v.id).is("ai_headline", null);
+  if (d.headline) await db.from("videos").update({ headline: d.headline }).eq("id", v.id).is("headline", null);
+  return d.headline || "(nothing fits)";
 }
