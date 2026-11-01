@@ -28,6 +28,8 @@ export type Area = {
   instagram_lost_at: string | null;
   instagram_lost_reason: string | null;
   instagram_lost_notified_at: string | null;
+  /** Usernames invited as collaborators on every one-tap post (2026-11-01); the lead can change them per post. */
+  instagram_collaborators: string[];
   is_active: boolean;
   sort_order: number;
   created_at: string;
@@ -70,6 +72,8 @@ export type Video = {
   publish_error: string | null;
   post_caption: string | null;
   post_media_id: string | null;
+  /** Collaborator invites sent with the post (usernames), if any. */
+  post_collaborators: string[] | null;
   /** AI-suggested caption (null = not done yet). See src/lib/captions.ts. */
   transcript: string | null;
   transcript_language: string | null;
@@ -85,9 +89,9 @@ export type Video = {
 export type PublishState = "queued" | "processing" | "published" | "failed";
 export type CaptionState = "done" | "failed" | "skipped";
 
-export type AreaSummary = Pick<Area, "id" | "name" | "language" | "instagram_handle" | "instagram_user_id" | "instagram_connected_at" | "instagram_lost_at" | "instagram_lost_reason">;
+export type AreaSummary = Pick<Area, "id" | "name" | "language" | "instagram_handle" | "instagram_user_id" | "instagram_connected_at" | "instagram_lost_at" | "instagram_lost_reason" | "instagram_collaborators">;
 /** The columns a page selects for a video's team. */
-export const AREA_SUMMARY_COLS = "id, name, language, instagram_handle, instagram_user_id, instagram_connected_at, instagram_lost_at, instagram_lost_reason";
+export const AREA_SUMMARY_COLS = "id, name, language, instagram_handle, instagram_user_id, instagram_connected_at, instagram_lost_at, instagram_lost_reason, instagram_collaborators";
 export type VideoWithArea = Video & { area: AreaSummary | null };
 
 export type ApplicationKind = "start" | "join";

@@ -28,9 +28,9 @@ type VideoRow = {
   duration_seconds: number | null; file_size: number | null; script: Script | null;
   publish_state: PublishState | null; publish_container_id: string | null; publish_requested_by: string | null;
   publish_attempts: number; post_caption: string | null; ai_caption: string | null; post_url: string | null; publish_error: string | null;
-  capture_meta: CaptureMeta | null;
+  post_collaborators: string[] | null; capture_meta: CaptureMeta | null;
 };
-const VIDEO_COLS = "id, area_id, status, storage_path, file_purged_at, duration_seconds, file_size, script, publish_state, publish_container_id, publish_requested_by, publish_attempts, post_caption, ai_caption, post_url, publish_error, capture_meta";
+const VIDEO_COLS = "id, area_id, status, storage_path, file_purged_at, duration_seconds, file_size, script, publish_state, publish_container_id, publish_requested_by, publish_attempts, post_caption, ai_caption, post_url, publish_error, post_collaborators, capture_meta";
 
 type AccountRow = { area_id: string; ig_user_id: string; username: string | null; access_token: string; token_expires_at: string | null };
 
@@ -139,8 +139,9 @@ export async function startPublish(db: Db, videoId: string): Promise<PublishOutc
   const { data: signed, error: signErr } = await db.storage.from("videos").createSignedUrl(v.storage_path!, SIGNED_URL_SECONDS);
   if (signErr || !signed) return fail(db, v.id, `Could not make a link to the file: ${signErr?.message ?? "unknown error"}`);
   const caption = (v.post_caption ?? v.ai_caption ?? captionFor(v.script)).slice(0, MAX_CAPTION);
+  const collaborators = v.post_collaborators ?? [];
   try {
-    const containerId = await ig.createReelContainer(acct.access_token, { videoUrl: signed.signedUrl, caption });
+    const containerId = await ig.createReelContainer(acct.access_token, { videoUrl: signed.signedUrl, caption, collaborators });
     await db.from("videos").update({
       publish_state: "processing", publish_container_id: containerId, publish_attempts: v.publish_attempts + 1,
       publish_error: null, post_caption: caption,
@@ -148,7 +149,8 @@ export async function startPublish(db: Db, videoId: string): Promise<PublishOutc
     return { state: "processing", error: null, postUrl: null };
   } catch (e) {
     if (tokenRejected(e)) return fail(db, v.id, await forgetRejected(db, v.area_id, acct.username));
-    return fail(db, v.id, ig.describeError(e));
+    const reason = ig.describeError(e);
+    return fail(db, v.id, collaborators.length ? `${reason} (If Instagram is objecting to the collaborator invite, clear the collaborators box and try again.)` : reason);
   }
 }
 

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireManager } from "@/lib/auth";
+import { parseCollaborators } from "@/lib/instagram";
 import { MAX_CAPTION, removeConnection, startPublish, type PublishOutcome } from "@/lib/instagram-publish";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -141,11 +142,14 @@ export async function deleteVideo(videoId: string) {
  * connected Instagram account. The caption is what the lead sees in the box, the
  * script by default. Instagram processes the file for a minute or so; the page polls
  * /api/videos/[id]/publish-status, and the publish cron finishes it if the page is gone.
+ * `collaboratorsRaw` (2026-11-01): up to three usernames Instagram invites as collaborators.
  */
-export async function postToInstagram(videoId: string, captionRaw: string): Promise<{ ok: true; outcome: PublishOutcome } | { error: string }> {
+export async function postToInstagram(videoId: string, captionRaw: string, collaboratorsRaw = ""): Promise<{ ok: true; outcome: PublishOutcome } | { error: string }> {
   const v = await requireManager(`/review/${videoId}`);
   const caption = captionRaw.trim();
   if (caption.length > MAX_CAPTION) return { error: `The caption is ${caption.length} characters; Instagram allows ${MAX_CAPTION}.` };
+  const collab = parseCollaborators(collaboratorsRaw ?? "");
+  if ("error" in collab) return { error: collab.error };
   const supabase = await createClient();
   const { data: row } = await supabase.from("videos").select("status, publish_state").eq("id", videoId).maybeSingle();
   if (!row) return { error: "Video not found." };
@@ -156,11 +160,24 @@ export async function postToInstagram(videoId: string, captionRaw: string): Prom
   const { error } = await supabase.from("videos").update({
     ...(row.status === "pending" ? { status: "approved", reviewed_by: v.userId, reviewed_at: now, rejection_note: null } : {}),
     publish_state: "queued", publish_requested_at: now, publish_requested_by: v.userId, publish_error: null, post_caption: caption || null,
+    post_collaborators: collab.usernames.length ? collab.usernames : null,
   }).eq("id", videoId);
   if (error) return { error: error.message };
   const outcome = await startPublish(createAdminClient(), videoId);
   revalidatePath("/review"); revalidatePath(`/review/${videoId}`);
   return { ok: true, outcome };
+}
+
+/** The usernames a team invites as collaborators on every post (prefilled on each one-tap post). Leads of the team and admins. */
+export async function setInstagramCollaborators(areaId: string, raw: string) {
+  const v = await requireManager("/review");
+  if (!(v.isAdmin || v.managedAreaIds.includes(areaId))) return { error: "You don't lead that team." };
+  const collab = parseCollaborators(raw ?? "");
+  if ("error" in collab) return { error: collab.error };
+  const { error } = await createAdminClient().from("areas").update({ instagram_collaborators: collab.usernames }).eq("id", areaId);
+  if (error) return { error: error.message };
+  revalidatePath("/review"); revalidatePath("/admin");
+  return { ok: true as const, usernames: collab.usernames };
 }
 
 /** Forget a team's Instagram token. Leads of the team and admins may. */

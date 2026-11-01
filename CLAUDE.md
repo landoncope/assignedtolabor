@@ -4,7 +4,7 @@ Owner: Landon Cope (landon@highpsiproducts.com). Product owner: Travis (non-tech
 Claude owns this repo: language, dependencies, architecture, and this file. Keep CLAUDE.md
 current whenever a decision is made or reversed. Dates below are absolute (YYYY-MM-DD).
 
-## Status (2026-10-31)
+## Status (2026-11-01)
 
 **MVP is live in production at https://assignedtolabor.org.** Landon and Travis are
 admins and are testing. Working and verified: anonymous upload with portrait 9:16
@@ -70,7 +70,7 @@ English case of 10-27 was not alone); the publish cron now probes every connecti
 daily and the leads are emailed to connect again ("Connection health" under the
 Instagram posting decision). Every team must Connect again before its next one-tap post.
 
-### Where we paused (2026-10-31: dashboard live, every team must reconnect Instagram)
+### Where we paused (2026-11-01: every team must reconnect Instagram; the caption-rendering step awaits Landon's go)
 
 Nothing is half-built. Pick up here.
 
@@ -267,6 +267,42 @@ Nothing is half-built. Pick up here.
   post id. (3) The by-hand button is now "I posted it myself" and asks "Is it live on
   Instagram already? This only records it here; it does not post anything." before
   marking. Flow check 70.
+- **2026-11-01, Travis's five posting asks.** (1) captions on the video, (2) the
+  description sent with the post, (3) hashtags at the bottom, and "maybe impossible":
+  (4) a headline on the video, (5) a collaborator on the post. Checked against the
+  real posts and Meta's docs (a research agent read the Instagram Platform reference
+  and Help Center pages; copies under the session scratchpad only). **(2) and (3) were
+  already true:** all six English Reels (10-21 to 10-26) carried the AI caption (365
+  to 730 characters) and every one ends with a line of 3 to 6 hashtags; 61 of 61
+  drafted captions have them (the prompt asks for hashtags on the last line). The API
+  allows 2200 characters, 30 hashtags and 20 @mentions. **(5) built the same day** as
+  "Collaborators" under the Instagram posting decision: Meta's container reference
+  documents `collaborators` for Reels (a list of up to 3 usernames; the invitee
+  accepts in the app and the Reel then shows on their profile), but whether it works
+  under Instagram Login is UNCONFIRMED (the overview says that setup "cannot access
+  ads or tagging"; the collaborator read endpoints are Facebook Login only): the first
+  real post with an invite will tell, and a refusal shows Instagram's reason with a
+  hint to clear the box. **(1) and (4) need the file changed:** the API has no
+  parameter for captions, subtitles, text or stickers (the full parameter list was
+  checked), and Instagram's own auto-captions are a viewer-side setting that may not
+  cover Tagalog, Slovak or Swahili and is not documented for API posts. A prototype in
+  the session scratchpad (`proto/burn.py`: ElevenLabs Scribe words with timestamps,
+  cue images from PIL, ffmpeg overlay, no libass needed) burned captions and a
+  headline into two real clips: Ty's 13 s Android clip in 0.7 s and Megan's 49 s
+  iPhone clip (82 MB, 47 fps) in 2.7 s on an M5 Max, output 36 MB at crf 20 (so a
+  posted file also shrinks, which helps the 300 MB limit). The captions sit below the
+  mouth (box bottom at 75% of the height, above Instagram's own caption area), the
+  headline above the head (top at 300 px, below the top 14% the UI covers). Samples
+  copied to ~/Downloads/atl-captions-sample/. Vercel Pro can run it without a new
+  server: functions up to 800 s, 4 GB / 2 vCPU, 250 MB bundle (5 GB in beta), with
+  ffmpeg from the `ffmpeg-static` package; a 1-minute clip should take about a
+  minute there. **Not built, waiting on Landon:** the render step (store Scribe's
+  word times from now on, a "Captions" switch with a timed preview over the player
+  and editable words, a headline box prefilled from a Claude suggestion, the burned
+  file posted instead of the original, the cron doing it when the lead leaves);
+  about two days with tests. Already-transcribed videos have no word times, so an
+  approved backlog would be re-transcribed once (English's 26 approved videos are
+  about 25 minutes of audio against the 91 a month).
 
 ### After the 2026-09-19 event (do these, then delete this list)
 
@@ -643,6 +679,20 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     Migration `20261030150000_instagram_health.sql`.
     Without a connected account the review page shows the manual flow as before plus
     a link to connect.
+    **Collaborators (2026-11-01, Travis):** migration `20261101120000_collaborators.sql`
+    adds `areas.instagram_collaborators text[]` (the team's usual invitees, set per team
+    under Instagram accounts on /review and /admin by its leads and admins,
+    `setInstagramCollaborators`) and `videos.post_collaborators text[]` (what the post
+    was sent with). The one-tap box has a "Collaborators" field prefilled with the
+    team's usual (`@a, @b`, up to 3; `parseCollaborators` in `instagram.ts` strips the
+    @, lower-cases, de-duplicates and refuses anything that is not letters, digits,
+    periods and underscores up to 30); `createReelContainer` sends
+    `collaborators=["a","b"]` (the reference's example is a list of usernames). The
+    invitee accepts in the Instagram app; the posted card says the invite was sent. A
+    container refusal while collaborators were sent appends "clear the collaborators
+    box and try again" to Instagram's reason, because whether the parameter works
+    under Instagram Login is unconfirmed. The mock records the list on the container
+    and `/__config?nocollab=1` makes it refuse the next one.
   - Meta's callbacks: `POST /api/instagram/deauthorize` and `/api/instagram/data-deletion`
     take Meta's `signed_request` (HMAC-SHA256 with the Instagram app secret), forget the
     token for that account id (either of its two ids) and, for deletion, answer with
@@ -675,8 +725,12 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     the Review page, Connect clearing it), 70 on 2026-10-31 (marking posted by hand
     asks first and "Not yet" changes nothing, the mark leaves no post id, "Move it
     back" returns the video to approved with the posting bookkeeping cleared, and a
-    posted video whose file is purged offers no way back). Its cron calls are scoped
-    to its own rows (see the cron above): real posts are in flight now.
+    posted video whose file is purged offers no way back), 77 on 2026-11-01 (the
+    team's usual collaborators saved from the row, prefilled on the one-tap post, a
+    bad username refused before anything is sent, the mock refusing the invite shows
+    the reason and the hint, the list stored with the post and received by the mock,
+    the posted card naming the invitees). Its cron calls are scoped to its own rows
+    (see the cron above): real posts are in flight now.
     The mock takes `/__config?badcode=1` to hand back a bad code once and
     `/__config?deadtoken=1` to reject the token (code 190) on the next Graph call.
     Against the real Instagram, two helpers: `node scripts/dev/instagram-live-test.mjs
@@ -873,6 +927,19 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     MP4 (192 kbps audio, 202x358) was accepted and published as-is, so no normalise
     step is built; if a file is ever refused the review page shows Instagram's reason
     and the manual flow, and a worker (DigitalOcean) can be added then.
+  - Checked again 2026-11-01 (Travis's asks; Meta's reference and Help Center): the
+    container takes `caption` (2200 characters, 30 hashtags, 20 @mentions; a dropped
+    caption is reported as `config_issue: CAPTION_NOT_ATTACHED` at publish),
+    `collaborators` (Reels, feed images, carousels; up to 3 usernames; invitee accepts
+    in the app), `cover_url` or `thumb_offset` (the cover frame), `share_to_feed`,
+    `audio_name` (original audio only, once), `location_id`, `user_tags` (images and
+    stories only), `alt_text` (images only). Nothing for closed captions, subtitles,
+    text, stickers or a title: those go into the file. Instagram's auto-captions are a
+    viewer-side setting ("Always/Never show closed captions") plus a per-reel toggle
+    in the app; whether API-published Reels get them is not documented. The docs
+    contradict themselves on the daily limit (100 or 50 API posts per 24 h; the
+    `content_publishing_limit` edge reports the real quota); 400 containers a day;
+    containers expire after 24 h.
   - Facebook: a separate call (`/{page-id}/video_reels`, `pages_manage_posts`); Reels
     are 3 to 90 s; posts from a Development-mode app are visible only to people with a
     role on the app, and going Live needs Business Verification (legal-entity

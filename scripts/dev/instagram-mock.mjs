@@ -39,7 +39,8 @@ createServer(async (req, res) => {
   // Test switches: /__config?badcode=1 makes the next login hand back a code the token exchange
   // rejects; ?deadtoken=1 makes the next Graph call reject the token (code 190, the session
   // invalidated because the password changed, as the real Instagram did on 2026-10-27).
-  if (p === "/__config") { state.badcode = params.badcode === "1"; state.deadtoken = params.deadtoken === "1"; return json(res, 200, { badcode: state.badcode, deadtoken: state.deadtoken }); }
+  // ?nocollab=1 makes the next container creation that carries collaborators refuse them.
+  if (p === "/__config") { state.badcode = params.badcode === "1"; state.deadtoken = params.deadtoken === "1"; state.nocollab = params.nocollab === "1"; return json(res, 200, { badcode: state.badcode, deadtoken: state.deadtoken, nocollab: state.nocollab }); }
 
   // Login dialog: send the browser straight back with a code (or an error with ?deny=1).
   if (p === "/oauth/authorize") {
@@ -78,12 +79,15 @@ createServer(async (req, res) => {
   if ((p === "/me/media" || p === `/${IG_USER_ID}/media`) && req.method === "POST") {
     if (body.media_type !== "REELS") return oauthError(res, 400, "Only REELS are mocked", 100);
     if (!body.video_url) return oauthError(res, 400, "video_url is required", 100);
+    let collaborators = [];
+    if (body.collaborators) { try { collaborators = JSON.parse(body.collaborators); } catch { return oauthError(res, 400, "Invalid parameter: collaborators must be a list of usernames", 100); } }
+    if (state.nocollab && collaborators.length) { state.nocollab = false; return oauthError(res, 400, "Invalid parameter: collaborators", 100); }
     let fetchStatus = null;
     try { const r = await fetch(body.video_url, { method: "HEAD" }); fetchStatus = r.status; state.fetched.push({ url: body.video_url.slice(0, 80), status: r.status, length: r.headers.get("content-length") }); }
     catch (e) { state.fetched.push({ url: body.video_url.slice(0, 80), error: String(e) }); }
     if (fetchStatus !== 200) return oauthError(res, 400, `The video file could not be fetched (HTTP ${fetchStatus ?? "error"})`, 9004);
     const id = `c-${state.containers.size + 1}`;
-    state.containers.set(id, { id, caption: body.caption ?? "", checks: 0, status_code: "IN_PROGRESS", fail: /MOCKFAIL/.test(body.caption ?? "") });
+    state.containers.set(id, { id, caption: body.caption ?? "", collaborators, checks: 0, status_code: "IN_PROGRESS", fail: /MOCKFAIL/.test(body.caption ?? "") });
     return json(res, 200, { id });
   }
   if (/^\/c-\d+$/.test(p) && req.method === "GET") {

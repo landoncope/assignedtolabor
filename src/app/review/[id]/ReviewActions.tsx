@@ -16,6 +16,9 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
   const [postUrl, setPostUrl] = useState("");
   const suggested = video.ai_caption ?? "";
   const [caption, setCaption] = useState(video.post_caption ?? (suggested || scriptCaption));
+  // Collaborators (2026-11-01): the team's usual invitees, or what this post was last sent with.
+  const usual = (video.area?.instagram_collaborators ?? []).map((u) => `@${u}`).join(", ");
+  const [collaborators, setCollaborators] = useState(video.post_collaborators?.length ? video.post_collaborators.map((u) => `@${u}`).join(", ") : usual);
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -65,7 +68,7 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
   function post() {
     setError("");
     start(async () => {
-      const r = await postToInstagram(video.id, caption);
+      const r = await postToInstagram(video.id, caption, collaborators);
       if ("error" in r) { setError(r.error); return; }
       setPublish(r.outcome);
       if (r.outcome.state === "published" || r.outcome.state === "failed") router.refresh();
@@ -102,6 +105,17 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
         {suggested && caption === suggested ? "Suggested from what they say in the video; edit as you like." : scriptCaption && caption === scriptCaption ? "The uploader\u2019s script; edit as you like." : "Edit as you like."}
         {suggested && caption !== suggested && <> <button type="button" onClick={() => setCaption(suggested)} disabled={pending} className="underline">Use the suggested caption</button></>}
         {scriptCaption && caption !== scriptCaption && <> <button type="button" onClick={() => setCaption(scriptCaption)} disabled={pending} className="underline">Use the script</button></>}
+      </span>
+    </label>
+  );
+
+  const collaboratorBox = (
+    <label className="block">
+      <span className="label">Collaborators</span>
+      <input className="input" placeholder="@username, up to 3" value={collaborators} onChange={(e) => setCollaborators(e.target.value)} disabled={pending} />
+      <span className="mt-1 block text-xs text-muted">
+        Instagram invites each account when the Reel is posted; once they accept in the app, the Reel shows on their profile too. Leave it empty for none.
+        {usual && collaborators !== usual && <> <button type="button" onClick={() => setCollaborators(usual)} disabled={pending} className="underline">Use the team&rsquo;s usual</button></>}
       </span>
     </label>
   );
@@ -157,7 +171,7 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
       {video.status === "pending" && !inFlight && (
         <div className="card flex flex-col gap-3">
           {frozenNote}
-          {connected && !frozen && captionBox}
+          {connected && !frozen && <>{captionBox}{collaboratorBox}</>}
           {connected && !frozen && <button onClick={post} disabled={pending} className="btn-primary py-3">Approve and post to @{handle}</button>}
           <button onClick={() => run(() => approveVideo(video.id))} disabled={pending} className={connected || frozen ? "btn-secondary" : "btn-primary py-3"}>{frozen ? "Approve anyway" : connected ? "Approve only, post later" : "Approve"}</button>
           <details>
@@ -178,6 +192,7 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
           {connected && !frozen ? (
             <>
               {captionBox}
+              {collaboratorBox}
               <button onClick={post} disabled={pending} className="btn-primary py-3">{publish.state === "failed" ? `Try again on @${handle}` : `Post to @${handle} now`}</button>
               <details>
                 <summary className="cursor-pointer text-sm text-muted">Post it by hand instead</summary>
@@ -209,6 +224,9 @@ export default function ReviewActions({ video, areas, caption: scriptCaption, is
             ? <>Posted {video.posted_at ? new Date(video.posted_at).toLocaleString() : ""}{handle ? <> on <b>@{handle}</b></> : ""}.</>
             : <>Marked as posted by hand {video.posted_at ? new Date(video.posted_at).toLocaleString() : ""}.{video.post_url ? "" : " No link to the post was given."}</>}
           {video.post_url && <> <a href={video.post_url} target="_blank" rel="noreferrer" className="text-accent underline">Open post</a></>}
+          {video.post_media_id && video.post_collaborators && video.post_collaborators.length > 0 && (
+            <p className="mt-1">Collaborator invite sent to {video.post_collaborators.map((u) => `@${u}`).join(", ")}; the Reel appears on their profile once they accept in Instagram.</p>
+          )}
           <p className="mt-1 text-muted">The source file is deleted automatically seven days after posting.</p>
           {!video.file_purged_at && (confirmUnpost ? (
             <div className="mt-3 rounded-lg border border-line p-3">

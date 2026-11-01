@@ -192,9 +192,32 @@ export async function mediaInsights(token: string, mediaId: string): Promise<{ v
   return { views: metricValue(j.data, "views"), reach: metricValue(j.data, "reach") };
 }
 
+/** Up to three accounts may be invited as collaborators on a Reel; each accepts in the Instagram app. */
+export const MAX_COLLABORATORS = 3;
+const USERNAME = /^[a-z0-9._]{1,30}$/;
+/**
+ * "@one, Two" -> ["one", "two"]: usernames without the @, lower-case, separated by commas,
+ * spaces or newlines, no duplicates, at most three. Anything that is not a username is
+ * returned as the error.
+ */
+export function parseCollaborators(raw: string): { usernames: string[] } | { error: string } {
+  const usernames: string[] = [];
+  for (const part of raw.split(/[\s,]+/)) {
+    const u = part.replace(/^@/, "").toLowerCase();
+    if (!u) continue;
+    if (!USERNAME.test(u)) return { error: `"${part}" is not an Instagram username (letters, numbers, periods and underscores, up to 30).` };
+    if (!usernames.includes(u)) usernames.push(u);
+  }
+  if (usernames.length > MAX_COLLABORATORS) return { error: `Instagram allows ${MAX_COLLABORATORS} collaborators on a post.` };
+  return { usernames };
+}
+
 /** Step 1 of a Reel: Instagram fetches the file from `videoUrl` and processes it. */
-export async function createReelContainer(token: string, opts: { videoUrl: string; caption: string }): Promise<string> {
-  const j = await graphPost("me/media", token, { media_type: "REELS", video_url: opts.videoUrl, caption: opts.caption, share_to_feed: "true" });
+export async function createReelContainer(token: string, opts: { videoUrl: string; caption: string; collaborators?: string[] }): Promise<string> {
+  const params: Record<string, string> = { media_type: "REELS", video_url: opts.videoUrl, caption: opts.caption, share_to_feed: "true" };
+  // Meta's reference shows collaborators=['username1','username2']: a list of usernames (read 2026-11-01).
+  if (opts.collaborators?.length) params.collaborators = JSON.stringify(opts.collaborators);
+  const j = await graphPost("me/media", token, params);
   const id = str(j.id);
   if (!id) throw new InstagramError("No container id in Instagram's response", 502);
   return id;

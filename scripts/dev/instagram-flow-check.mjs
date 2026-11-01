@@ -114,6 +114,13 @@ try {
   await page.waitForURL(/instagram_connected=/, { timeout: 20_000 });
   check("back on /review with the connected notice", (await page.textContent("body")).includes("Instagram connected as @atl_mock_team"));
   check("team row shows the handle", (await page.locator("#instagram li", { hasText: "Instagram Mock Team" }).textContent()).includes("connected as @atl_mock_team"));
+  // The team's usual collaborators (2026-11-01), saved on the row and prefilled on every one-tap post.
+  const collabForm = page.locator("#instagram li", { hasText: "Instagram Mock Team" }).locator("form");
+  await collabForm.getByPlaceholder("@username, up to 3").fill("@atl_friend, Second.One");
+  await collabForm.getByRole("button", { name: "Save" }).click();
+  await collabForm.getByText("Saved").waitFor({ timeout: 15_000 });
+  const savedCollab = (await db.from("areas").select("instagram_collaborators").eq("id", created.areaId).single()).data?.instagram_collaborators;
+  check("the team's usual collaborators are saved lower-case without the @", JSON.stringify(savedCollab) === JSON.stringify(["atl_friend", "second.one"]), JSON.stringify(savedCollab));
   const acct = (await db.from("instagram_accounts").select("*").eq("area_id", created.areaId).maybeSingle()).data;
   check("token stored (long-lived) with the account ids", acct?.access_token?.startsWith("long-") && acct.ig_user_id === IG_USER_ID && acct.username === "atl_mock_team", acct ? `expires ${acct.token_expires_at?.slice(0, 10)} scopes ${acct.scopes?.join(",")}` : "no row");
   const areaRow = (await db.from("areas").select("instagram_user_id, instagram_handle, instagram_connected_at").eq("id", created.areaId).single()).data;
@@ -173,21 +180,36 @@ try {
   await page.screenshot({ path: join(shots, "dashboard.png"), fullPage: true });
   await page.setViewportSize({ width: 1280, height: 720 });
 
-  // One tap on a pending video.
+  // One tap on a pending video, with the team's usual collaborators prefilled.
   await page.goto(`${base}/review/${A}`);
   const captionBox = page.locator("textarea").first();
   check("caption box is prefilled with the script", (await captionBox.inputValue()).includes("A short word about faith."));
+  const collabBox = page.getByPlaceholder("@username, up to 3");
+  check("collaborators box is prefilled with the team's usual", (await collabBox.inputValue()) === "@atl_friend, @second.one", await collabBox.inputValue());
+  await collabBox.fill("@bad name!");
   await page.getByRole("button", { name: /Approve and post to @atl_mock_team/ }).click();
+  await page.getByText(/is not an Instagram username/).waitFor({ timeout: 15_000 });
+  check("a bad username is refused before anything is sent", (await video(A, "status")).status === "pending");
+  await collabBox.fill("@atl_friend, @second.one");
+  await fetch(`${mock}/__config?nocollab=1`);
+  await page.getByRole("button", { name: /Approve and post to @atl_mock_team/ }).click();
+  await page.getByText("Not posted:").waitFor({ timeout: 40_000 });
+  check("Instagram refusing the invite shows its reason and the hint", /Invalid parameter: collaborators[\s\S]*clear the collaborators box/.test(await page.textContent("body")));
+  await page.getByRole("button", { name: /Try again on @atl_mock_team/ }).click();
   await page.getByText("Sending to Instagram").waitFor({ timeout: 15_000 });
   check("post goes in flight", true);
   await page.getByText(/^Posted /).waitFor({ timeout: 40_000 });
   const openPost = await page.getByRole("link", { name: "Open post" }).getAttribute("href");
   check("page shows Posted with the permalink", /instagram\.com\/reel\/MOCK/.test(openPost ?? ""), openPost ?? "");
-  const vA = await video(A, "status, publish_state, post_url, post_media_id, post_caption, posted_by, reviewed_by, publish_attempts");
+  const vA = await video(A, "status, publish_state, post_url, post_media_id, post_caption, posted_by, reviewed_by, publish_attempts, post_collaborators");
   check("video A is posted in the database", vA?.status === "posted" && vA.publish_state === "published" && !!vA.post_media_id && vA.posted_by === created.userId && vA.reviewed_by === created.userId, JSON.stringify(vA));
   check("caption posted is the script", vA?.post_caption === "Hook one\n\nA short word about faith.\n\nLearn more at the link.");
+  check("collaborators stored with the post", JSON.stringify(vA?.post_collaborators) === JSON.stringify(["atl_friend", "second.one"]), JSON.stringify(vA?.post_collaborators));
   const mockState = await (await fetch(`${mock}/__state`)).json();
   check("mock fetched the signed file URL", mockState.fetched.some((f) => f.status === 200 && Number(f.length) === bytes.length), JSON.stringify(mockState.fetched[0]));
+  const cA = mockState.containers.find((c) => /^Hook one/.test(c.caption));
+  check("mock received the collaborator invites with the container", JSON.stringify(cA?.collaborators) === JSON.stringify(["atl_friend", "second.one"]), JSON.stringify(cA));
+  check("posted card names the invitees", (await page.textContent("body")).includes("Collaborator invite sent to @atl_friend, @second.one"));
 
   // A file Instagram refuses: the page says why and offers a retry; the video stays approved.
   await page.goto(`${base}/review/${B}`);
