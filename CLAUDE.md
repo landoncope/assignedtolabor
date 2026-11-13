@@ -4,7 +4,7 @@ Owner: Landon Cope (landon@highpsiproducts.com). Product owner: Travis (non-tech
 Claude owns this repo: language, dependencies, architecture, and this file. Keep CLAUDE.md
 current whenever a decision is made or reversed. Dates below are absolute (YYYY-MM-DD).
 
-## Status (2026-11-01)
+## Status (2026-11-12)
 
 **MVP is live in production at https://assignedtolabor.org.** Landon and Travis are
 admins and are testing. Working and verified: anonymous upload with portrait 9:16
@@ -77,8 +77,20 @@ puts no captions on our API posts he said "go" on rendering them ourselves: ever
 one-tap post now re-encodes the file with the spoken words and a headline drawn in and
 the loudness evened out (see "Captions drawn into the video" under Decisions). Not yet
 seen on a real post: no team is connected until the leads reconnect.
+**2026-11-12: the captions held in the field, and team form pages plus "what the
+channel has led to" shipped.** English, Slovak and Philippines reconnected their
+Instagram (Taiwan has not). The English team posted six Reels from 11-09 to 11-11, every
+one on the first attempt with captions and a headline drawn in, three with collaborator
+invites; the renders took 30 to 199 s on Vercel (a 61 s clip the longest), no failures.
+Travis then asked (a "future feature request") for the site to sync with the
+missionary-referral forms, so volunteers see how many referrals their channel has
+produced and the stories of people who were baptized, and whether the forms could live
+at assignedtolabor.org/<something>. Shipped the same day (PR #8): each team's form at an
+address of ours with its opens counted, and figures and stories on the dashboard, typed
+in by the team's leads for now. The automatic sync waits on Gathering Israel, who run
+the forms; see "Team pages and what the channel has led to" under Decisions.
 
-### Where we paused (2026-11-01 night: captions, headline and collaborators live and proven on test Reels; every team must reconnect Instagram)
+### Where we paused (2026-11-12: team form pages and channel results are live; the sync with Gathering Israel waits on Travis's answers)
 
 Nothing is half-built. Pick up here.
 
@@ -368,6 +380,43 @@ Nothing is half-built. Pick up here.
   own words, since six videos from one event script all got "Carrying something
   heavy?". Landon said @landon_cope may be used for any and all testing. The test team and its connection stay for more tests until
   `instagram-live-test.mjs cleanup`; the Reel stays unless deleted in the app.
+- **2026-11-12, Travis's "future feature request": referrals and baptism stories.**
+  First the leftovers Landon asked about: both test Reels are still on @landon_cope
+  (DfL5c4LjSB4, DfL6qIEjjDd), and the first still reads "seek_this_jesus_ was invited
+  to be a collaborator but hasn't accepted yet" (neither accepted nor declined;
+  deleting that Reel in the app withdraws the invite). The 2 vCPU setting: Landon
+  said not now, maybe later.
+  **What exists today** (read from the teams' Instagram bios and the public forms):
+  every channel's bio links a Google Form run by **Gathering Israel**
+  (gatheringisrael.org, an independent Utah 501(c)(3), support@gatheringisrael.org,
+  "not owned, operated, sponsored, approved, or endorsed by" the Church), one form
+  per channel, the documents named "Updated Holy Rebellion (English | Tagalog |
+  Slovak | Chinese)": English forms.gle/fNAi2ubkzujWtALRA, Philippines
+  forms.gle/89A9EPGH6bKd1XJB8, Slovak forms.gle/rtKDJiP5eiYPiyNr8, Taiwan
+  forms.gle/wCA18347mqW12r9t7. The French account's bio has no link; Spanish and
+  Swahili have no account. All four are the same 16 questions on 5 pages (interest;
+  a readiness check: lessons before, topics, hopes, time, availability, language;
+  WhatsApp or SMS; name, phone, street, city, country, a note, an acknowledgement;
+  and a "Disqualified" page a No leads to), with consent to texts from Gathering
+  Israel at the top. They follow each one up on WhatsApp and pass the confirmed ones
+  to missionaries through the Church's own channels; their privacy page speaks of
+  "CRM systems". So a count per channel already exists on their side (one response
+  sheet per form); where they record what happened next (taught, baptized) is
+  unknown, and their site describes no partner reporting.
+  **Built and deployed**: see "Team pages and what the channel has led to" under
+  Decisions. The four teams' pages are live with their forms:
+  assignedtolabor.org/english, /philippines, /slovak, /taiwan (set by hand in the
+  database on 2026-11-12 from the bio links; admins change them under Teams and leads).
+  **NOT done, on purpose:** the bios still link forms.gle (a bio is its owner's to
+  change, and Gathering Israel should hear first: their texting consent may be
+  registered against the form's address); nothing a visitor types reaches us; nothing
+  is synced automatically; no figures or stories have been entered for a real team.
+  **Waiting on Travis** (message drafted for him 2026-11-12): who at Gathering Israel
+  to talk to; where they keep each channel's responses and what came of them (the
+  forms' response sheets? a CRM?) and whether they will share counts per channel;
+  whether Travis can see that data himself today; whether they are happy for their
+  forms to show inside our pages and for the bios to point there; who writes the
+  stories. The ways to sync are listed in the decision.
 
 ### After the 2026-09-19 event (do these, then delete this list)
 
@@ -621,7 +670,8 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
   drafted-advertising Rails app on :3000). Verify with `http://127.0.0.1:3000` before
   trusting a tab; only this MacBook's Chrome reaches this machine's dev server.
 - `psql` 17 available locally. No Docker.
-- Commits end with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
+- Commits end with `Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>` (the model
+  doing the work; it was 5.1 until 2026-11-12).
 
 ## Decisions (2026-09-04, confirmed by Landon unless marked proposed)
 
@@ -1098,6 +1148,79 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     `scripts/dev/render-sql-check.sh` (4 rolled-back checks). Prototype that led
     here: `proto/burn.py` in the session scratchpad and the sample clips in
     ~/Downloads/atl-captions-sample/.
+- **Team pages and what the channel has led to (2026-11-12, Travis's request; PR #8).**
+  Migration `20261112120000_team_pages_impact.sql`.
+  - **A team's page, assignedtolabor.org/<slug>.** `areas.slug` (3 to 40 lowercase
+    letters, digits and hyphens, unique; existing teams got their name: english,
+    philippines, slovak, taiwan, french, spanish, swahili), `areas.referral_form_url`
+    and `referral_form_title`, set by an admin under Teams and leads on /admin
+    (`updateArea`: the address is tidied and refused when the site uses the word
+    itself, `RESERVED` in `src/lib/team-page.ts`; the pasted link, a forms.gle short
+    link included, is followed, and a Google Form is stored in its long form with the
+    form's own title; a link that does not open, or a Google Form that is not public,
+    is refused). The route is `src/app/[team]/page.tsx`, a dynamic segment at the
+    root (Next gives the app's own routes precedence; anything that is not an active
+    team with a form is a 404). A Google Form is shown IN the page (`TeamForm.tsx`: a
+    thin bar with the channel's Instagram handle and "Form not showing? Open it
+    here", then a frame as tall as the screen that scrolls inside itself, so each
+    page of the form starts at its top; checked at phone size: Google sends no
+    frame-blocking header and the form's pages work inside the frame). Any other
+    kind of link is forwarded to (307). The page is titled as the form, without the
+    site's name, and is `noindex`. The form stays Gathering Israel's: what a visitor
+    types goes to their sheet as before and never to us. Travis's question, whether
+    housing the forms on our URL "would mess anything up": no.
+  - **Opens.** The page reports one open per visit (`POST /api/team-page/open`: same
+    origin only, a sessionStorage latch, link previews and crawlers left out by user
+    agent; the forwarding kind counts on the server). `team_page_days` (team, UTC
+    day, opens) is bumped by `bump_team_page(aid)`, executable by the service role
+    only. No visitor data is kept. It counts visits, NOT forms sent: a page cannot
+    see a submit inside a frame (the frame reloads on every page of the form and on
+    the branch to "Disqualified", so counting loads would be a guess).
+  - **Figures and stories.** `team_impact_reports` (team, `as_of` day, `requests` =
+    people who filled in the form, `referrals` = sent on to the missionaries,
+    `baptisms`; each optional; running totals; one row per team per day, the newest
+    shown and the one before it giving "+N since ..."; `source` is 'manual' today)
+    and `team_stories` (title, body, optional date). RLS: the team's members, leads
+    and admins read (`is_team_member`), its leads and admins write
+    (`can_manage_area`). On the dashboard each team card opens with "What the channel
+    has led to" (`src/app/my/TeamImpact.tsx`, `src/lib/impact.ts`): up to three
+    figures with their growth, the as-of day, the form page's address with its opens
+    in 30 days, the stories (two shown, the rest behind "Show all"), and for leads
+    and admins "Update the figures", "Add a story", Edit, and Delete (which asks
+    first). Actions `saveImpact`, `saveStory`, `deleteStory` in `src/app/my/actions.ts`
+    go through the session, so RLS decides. A member with nothing to see gets no
+    box. The admins' one-line list of other teams carries the figures too. The
+    upload reminder email (`goal_reminder`) gains one sentence per team the person
+    is on that has figures ("Through the Philippines channel so far, 14 people asked
+    to meet the missionaries, ..."). The story form says to use a first name only
+    and share only what the person is glad to have shared. The privacy page covers
+    the form pages and the figures.
+  - **Why typed in, and the sync that is NOT built.** The figures live with Gathering
+    Israel (see the 2026-11-12 bullet under "Where we paused" for what their forms
+    are). Three ways to automate, to be chosen with them: (a) they share each form's
+    response sheet, read-only, with a Google service account of ours (project
+    assigned-to-labor-508202) and a cron counts the rows and reads a status column if
+    they keep one: nothing for them to install, and the history comes with it; (b) a
+    small Apps Script on each sheet posts the totals to an endpoint of ours when a
+    form comes in: no personal data leaves them at all; (c) the form itself moves
+    into our page (the 16 questions as our own form in each language, answers passed
+    on to their sheet or CRM): exact counts at the source, but it makes us a holder
+    of people's names, phone numbers, addresses and religious interest (EU visitors
+    of the Slovak channel included) and their texting-consent wording must be kept,
+    so only if they want it. Whichever is chosen writes `team_impact_reports` rows
+    under its own `source`, and the dashboard does not change. Baptisms and stories
+    need their records, or a person, either way. Not built either: an email to the
+    team when a story is added (members have only agreed to goal reminders).
+  - **Tests:** `scripts/dev/impact-sql-check.sh` (28 rolled-back rule checks: the
+    address format and uniqueness, who reads and writes figures and stories, the
+    counter closed to everyone but the server) and `node scripts/dev/team-page-check.mjs
+    http://localhost:3001 [dir]` (38 browser checks on a local build, header has the
+    commands: the admin sets the address and the form's short link, bad addresses and
+    links are refused, the public page shows the form in a frame that fills a phone
+    screen, opens are counted once per visit and not for previews, a non-Google link
+    is forwarded, the lead enters and corrects figures and a story, a member reads
+    but cannot change them, an outsider sees nothing; it shows the English team's
+    real form in a throwaway team's page and never submits it).
 - **One-tap posting, researched 2026-10-03** (primary sources read that day by a
   research agent; notes in the session scratchpad are not kept, so the facts are here):
   - Instagram, with "Instagram API with Instagram Login" (permissions
@@ -1171,6 +1294,12 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
    should be AI-drafted (Travis: yes, and an AI video description too); built the
    same day, see "AI-suggested captions" under Decisions.
 
+4. Referrals and outcomes (asked 2026-11-12): who at Gathering Israel to work with;
+   where each channel's form responses and their outcomes are kept and whether they
+   will share counts per channel (and how: a shared sheet, a script, or the form
+   moving to our page); whether the forms may show inside assignedtolabor.org/<team>
+   and the bios point there; who writes the baptism stories.
+
 ## Codebase
 
 Next.js 16 (App Router, Turbopack, React 19), TypeScript, Tailwind v4, supabase-js +
@@ -1205,6 +1334,8 @@ src/lib/caption-cues.ts     timed words -> caption cues, the preview's cueAt, th
 src/lib/render-state.ts     renderKey / renderCurrent / renderSkipReason: the publish flow's view of the render step
 src/lib/render.ts           the render step: ffmpeg (ffmpeg-static) draws the ASS captions and headline, normalises loudness
 assets/fonts/               Noto Sans Bold and Noto Sans TC Bold (OFL) for the captions, traced into the render functions
+src/lib/team-page.ts        a team's page address (slug rules, reserved words) and its form link (resolve, embed or forward)
+src/lib/impact.ts           what a channel has led to: the three figures, growth, the sentence for emails
 src/components/             Nav, VideoRecorder (multi-clip + teleprompter), VideoPlayer (signed URL),
                             InstagramConnections (connect/disconnect a team's account)
 src/app/                    / landing, /upload flow, /qr poster, /login, /auth/*, /my (the
@@ -1214,7 +1345,9 @@ src/app/                    / landing, /upload flow, /qr poster, /login, /auth/*
                             /api/videos/[id]/{playback-url,publish-status,render},
                             /api/lead-applications/[id]/playback-url,
                             /api/instagram/{connect,callback,deauthorize,data-deletion},
-                            /api/cron/{purge,notify,publish,captions}
+                            /api/cron/{purge,notify,publish,captions},
+                            /[team] (a team's form page, assignedtolabor.org/<slug>) and
+                            /api/team-page/open (its open counter)
 ```
 
 Commands: `npm run dev`, `npm run build`, `npm run lint`, `npm run typecheck`,
@@ -1230,7 +1363,9 @@ Tests that need NO captcha change (they never sign in anonymously or by password
 `scripts/dev/lead-sql-check.sh` (44 rule checks as throwaway users inside one
 rolled-back transaction, by setting the JWT claims Postgres sees),
 `scripts/dev/profiles-guard-check.sh` (8), `scripts/dev/dashboard-sql-check.sh`
-(23, same harness), `scripts/dev/render-sql-check.sh` (4) and
+(23, same harness), `scripts/dev/render-sql-check.sh` (4),
+`scripts/dev/impact-sql-check.sh` (28), `node scripts/dev/team-page-check.mjs
+http://localhost:3001 [dir]` (38 browser checks of team pages and channel results) and
 `node scripts/dev/lead-flow-check.mjs http://localhost:3001 fake-cam.y4m [dir]` (44
 browser checks of the team lead application; build and start with
 `NEXT_PUBLIC_TURNSTILE_SITE_KEY= NEXT_PUBLIC_SITE_URL=http://localhost:3001`). Their

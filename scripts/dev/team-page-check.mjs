@@ -30,7 +30,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20_000) => { const end = Date.now() + ms; for (;;) { const v = await fn(); if (v) return v; if (Date.now() > end) return null; await sleep(500); } };
 const team = async () => (await db.from("areas").select("slug, referral_form_url, referral_form_title").eq("id", created.areaId).single()).data;
 const opens = async () => ((await db.from("team_page_days").select("opens").eq("area_id", created.areaId)).data ?? []).reduce((a, d) => a + d.opens, 0);
-const day = (offset = 0) => new Date(Date.now() - offset * 86400_000).toISOString().slice(0, 10);
+// A day as the page's date box sees it: local, not UTC (in the evening the two differ, and the box refuses a day after today).
+const day = (offset = 0) => { const d = new Date(Date.now() - offset * 86400_000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 
 const created = { users: [], areaId: null };
 async function person(label, patch = {}) {
