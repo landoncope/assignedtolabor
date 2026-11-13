@@ -416,7 +416,7 @@ Nothing is half-built. Pick up here.
   change, and Gathering Israel should hear first: their texting consent may be
   registered against the form's address); nothing a visitor types reaches us; nothing
   is synced automatically; no figures or stories have been entered for a real team.
-  **Waiting on Travis** (message drafted for him 2026-11-12): who at Gathering Israel
+  **Waiting on Travis** (Landon sent him the questions 2026-11-12): who at Gathering Israel
   to talk to; where they keep each channel's responses and what came of them (the
   forms' response sheets? a CRM?) and whether they will share counts per channel;
   whether Travis can see that data himself today; whether they are happy for their
@@ -441,7 +441,16 @@ Nothing is half-built. Pick up here.
   that account; the account must be a professional one), then a lead or an admin taps
   Connect on the Review or Admin page from that person's own device. Taiwan still has
   to reconnect (its row says "connection lost"). Spanish has 12 videos waiting for
-  review and Swahili 4, with one and no people on the team.
+  review and Swahili 4, with one and no people on the team. Landon sent Travis all of
+  this the same evening (the overview, the accept-then-Connect steps, Taiwan, the
+  waiting videos, and a request to start an "ASL" team waiting under Team requests
+  since 2026-11-08).
+  **Loose ends offered to Landon, none taken up yet:** deleting the two test Reels on
+  @landon_cope (the first also withdraws the pending invite to @seek_this_jesus_);
+  removing ensembleenchrist1 from the Meta app's roles; one stray 4 s test clip in the
+  `videos` bucket from the 2026-10-15 captions check
+  (`e68f6051-4197-49d8-94c3-fa02feb8a3bd/captions-1792081503653-2.mp4`); PR #5
+  (`mic-gain`) still open.
 
 ### After the 2026-09-19 event (do these, then delete this list)
 
