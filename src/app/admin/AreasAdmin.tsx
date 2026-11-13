@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import { areaLabel, type Area } from "@/lib/types";
 import { addManager, createArea, removeInvite, removeManager, removeMember, updateArea } from "./actions";
 
+const SITE_HOST = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://assignedtolabor.org").replace(/^https?:\/\//, "").replace(/\/$/, "");
+
 export type AreaWithManagers = Area & {
   managers: { id: string; email: string | null; display_name: string | null }[];
   invites: string[];
@@ -35,21 +37,34 @@ function AreaCard({ area, run, pending }: { area: AreaWithManagers; run: (fn: ()
   const [editing, setEditing] = useState(false);
   const [email, setEmail] = useState("");
   return (
-    <div className={`card ${area.is_active ? "" : "opacity-60"}`}>
+    <div className={`card ${area.is_active ? "" : "opacity-60"}`} data-team={area.id}>
       {editing ? (
-        <form action={(fd) => { run(() => updateArea(area.id, fd)); setEditing(false); }} className="flex flex-col gap-2 sm:flex-row sm:items-end">
-          <label className="flex-1"><span className="label">Name</span><input name="name" className="input" defaultValue={area.name} required /></label>
-          <label className="flex-1"><span className="label">Language</span><input name="language" className="input" defaultValue={area.language} required /></label>
-          <label className="flex-1"><span className="label">Instagram</span><input name="instagram_handle" className="input" defaultValue={area.instagram_handle ?? ""} /></label>
-          <label className="flex items-center gap-2 pb-2 text-sm"><input type="checkbox" name="is_active" defaultChecked={area.is_active} /> Active</label>
-          <button className="btn-primary" disabled={pending}>Save</button>
-          <button type="button" onClick={() => setEditing(false)} className="btn-secondary">Cancel</button>
+        <form action={(fd) => { run(() => updateArea(area.id, fd)); setEditing(false); }} className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <label className="flex-1"><span className="label">Name</span><input name="name" className="input" defaultValue={area.name} required /></label>
+            <label className="flex-1"><span className="label">Language</span><input name="language" className="input" defaultValue={area.language} required /></label>
+            <label className="flex-1"><span className="label">Instagram</span><input name="instagram_handle" className="input" defaultValue={area.instagram_handle ?? ""} /></label>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <label className="sm:w-1/3"><span className="label">Page address: {SITE_HOST}/</span><input name="slug" className="input" defaultValue={area.slug ?? ""} placeholder="philippines" autoCapitalize="none" /></label>
+            <label className="flex-1"><span className="label">Missionary form link (shown on that page)</span><input name="referral_form_url" className="input" defaultValue={area.referral_form_url ?? ""} placeholder="https://forms.gle/…" autoCapitalize="none" /></label>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="mr-auto flex items-center gap-2 text-sm"><input type="checkbox" name="is_active" defaultChecked={area.is_active} /> Active</label>
+            <button className="btn-primary" disabled={pending}>Save</button>
+            <button type="button" onClick={() => setEditing(false)} className="btn-secondary">Cancel</button>
+          </div>
         </form>
       ) : (
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="font-semibold">{areaLabel(area)}{!area.is_active && <span className="ml-2 text-xs text-muted">(inactive)</span>}</div>
             <div className="text-sm text-muted">{area.instagram_handle ? `@${area.instagram_handle}` : "No Instagram handle yet"}</div>
+            <div className="text-sm text-muted" data-team-page={area.slug ?? ""}>
+              {area.slug && area.referral_form_url
+                ? <>Form page: <a href={`/${area.slug}`} target="_blank" rel="noreferrer" className="text-accent underline">{SITE_HOST}/{area.slug}</a>{area.referral_form_title ? ` (${area.referral_form_title})` : ""}</>
+                : "No form page yet (Edit to give it an address and the form link)"}
+            </div>
           </div>
           <button onClick={() => setEditing(true)} className="text-sm text-muted hover:text-foreground">Edit</button>
         </div>

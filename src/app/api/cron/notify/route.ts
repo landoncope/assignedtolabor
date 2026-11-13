@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { escapeHtml as esc, sendEmail, siteUrl, type Outgoing } from "@/lib/email";
 import { daysAgo, formatDay, goalStatus, reminderDue } from "@/lib/goals";
+import { IMPACT_COLS, impactSentence } from "@/lib/impact";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { areaLabel } from "@/lib/types";
+import { areaLabel, type ImpactReport } from "@/lib/types";
 
 /**
  * Notification sweep (Vercel cron, every 5 minutes, bearer CRON_SECRET).
@@ -301,11 +302,40 @@ export async function GET(request: NextRequest) {
     const { data: uploads } = await db.from("videos").select("user_id, created_at").in("user_id", goalPeople.map((p) => p.id)).order("created_at", { ascending: false });
     const lastUpload = new Map<string, string>();
     for (const u of (uploads ?? []) as { user_id: string; created_at: string }[]) if (!lastUpload.has(u.user_id)) lastUpload.set(u.user_id, u.created_at);
+    // What each person's channel has led to (2026-11-12): one line in the reminder, read
+    // only when a reminder is actually going out.
+    let impactLines: Map<string, string[]> | null = null;
+    const impactFor = async (userId: string): Promise<string[]> => {
+      if (!impactLines) {
+        impactLines = new Map();
+        const ids = goalPeople.map((x) => x.id);
+        const [{ data: mem }, { data: led }, { data: reps }, { data: teams }] = await Promise.all([
+          db.from("area_members").select("area_id, user_id").in("user_id", ids),
+          db.from("area_managers").select("area_id, user_id").in("user_id", ids),
+          db.from("team_impact_reports").select(IMPACT_COLS).order("as_of", { ascending: false }).limit(1000),
+          db.from("areas").select("id, name, language").eq("is_active", true),
+        ]);
+        const latest = new Map<string, ImpactReport>();
+        for (const r of (reps ?? []) as ImpactReport[]) if (!latest.has(r.area_id)) latest.set(r.area_id, r);
+        const names = new Map(((teams ?? []) as { id: string; name: string; language: string }[]).map((t) => [t.id, t.name]));
+        const seen = new Set<string>();
+        for (const row of [...((mem ?? []) as { area_id: string; user_id: string }[]), ...((led ?? []) as { area_id: string; user_id: string }[])]) {
+          const key = `${row.user_id}:${row.area_id}`;
+          const report = latest.get(row.area_id), name = names.get(row.area_id);
+          if (seen.has(key) || !report || !name) continue;
+          seen.add(key);
+          const line = impactSentence(esc(name), report);
+          if (line) impactLines.set(row.user_id, [...(impactLines.get(row.user_id) ?? []), line]);
+        }
+      }
+      return impactLines.get(userId) ?? [];
+    };
     for (const p of goalPeople) {
       const s = goalStatus(p.upload_goal, p.upload_goal_set_at, lastUpload.get(p.id) ?? null);
       if (!s || !reminderDue(s, p.goal_reminded_for)) continue;
       const due = s.dueAt;
       const overdue = s.state === "overdue";
+      const led = await impactFor(p.id);
       await deliver("goal_reminder", {
         to: p.email,
         subject: overdue ? "Your next video is due" : "Your next video is nearly due",
@@ -314,6 +344,7 @@ export async function GET(request: NextRequest) {
           `You chose to send a video ${s.goal.label.toLowerCase()} (${s.goal.every}).`,
           s.sinceIsUpload ? `Your last one was ${daysAgo(s.since)} (${formatDay(s.since)}).` : `You set the goal on ${formatDay(s.since)} and have not sent one since.`,
           `The next one ${overdue ? "was due" : "is due"} ${formatDay(due)}. Recording it takes about two minutes.`,
+          ...led,
         ],
         cta: { label: "Record a video", href: `${siteUrl}/upload` },
         footer: FOOTER_GOAL,
