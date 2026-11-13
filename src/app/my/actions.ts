@@ -107,3 +107,61 @@ export async function nudgeMember(areaId: string, userId: string, noteRaw: strin
   }
   return { ok: true };
 }
+
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const leads = (v: { isAdmin: boolean; managedAreaIds: string[] }, areaId: string) => v.isAdmin || v.managedAreaIds.includes(areaId);
+
+/**
+ * A team's running totals as of a day (2026-11-12): how many people asked to meet the
+ * missionaries through the channel, how many were sent on, how many were baptized. Its
+ * leads and admins; saving again for the same day corrects that day's figures.
+ */
+export async function saveImpact(areaId: string, form: FormData): Promise<Done> {
+  const v = await requireUser("/my");
+  if (!leads(v, areaId)) return { error: "Only the team's leads can update its figures." };
+  const figures: Record<string, number | null> = {};
+  for (const key of ["requests", "referrals", "baptisms"]) {
+    const raw = String(form.get(key) ?? "").replace(/[,\s]/g, "");
+    if (!raw) { figures[key] = null; continue; }
+    if (!/^\d{1,8}$/.test(raw)) return { error: "The figures are whole numbers." };
+    figures[key] = Number(raw);
+  }
+  if (Object.values(figures).every((x) => x === null)) return { error: "Fill in at least one figure." };
+  const today = new Date().toISOString().slice(0, 10);
+  const as_of = String(form.get("as_of") ?? "").trim() || today;
+  // A day ahead is allowed: the lead's evening can be tomorrow in UTC.
+  if (!DAY.test(as_of) || Number.isNaN(Date.parse(as_of)) || Date.parse(as_of) > Date.now() + 86400_000) return { error: "Pick a date that is not in the future." };
+  const supabase = await createClient();
+  const { error } = await supabase.from("team_impact_reports").upsert({ area_id: areaId, as_of, ...figures, source: "manual", created_by: v.userId }, { onConflict: "area_id,as_of" });
+  if (error) return { error: error.message };
+  revalidatePath("/my");
+  return { ok: true };
+}
+
+/** Add a story for the team (storyId null) or correct one. Its leads and admins. */
+export async function saveStory(areaId: string, storyId: string | null, form: FormData): Promise<Done> {
+  const v = await requireUser("/my");
+  if (!leads(v, areaId)) return { error: "Only the team's leads can add stories." };
+  const title = String(form.get("title") ?? "").trim().slice(0, 120);
+  const body = String(form.get("body") ?? "").trim().slice(0, 4000);
+  const happened_on = String(form.get("happened_on") ?? "").trim() || null;
+  if (!title || !body) return { error: "A story needs a title and a few words." };
+  if (happened_on && (!DAY.test(happened_on) || Number.isNaN(Date.parse(happened_on)))) return { error: "That date doesn't look right." };
+  const supabase = await createClient();
+  const { error } = storyId
+    ? await supabase.from("team_stories").update({ title, body, happened_on, updated_at: new Date().toISOString() }).eq("id", storyId).eq("area_id", areaId)
+    : await supabase.from("team_stories").insert({ area_id: areaId, title, body, happened_on, created_by: v.userId });
+  if (error) return { error: error.message };
+  revalidatePath("/my");
+  return { ok: true };
+}
+
+export async function deleteStory(areaId: string, storyId: string): Promise<Done> {
+  const v = await requireUser("/my");
+  if (!leads(v, areaId)) return { error: "Only the team's leads can remove stories." };
+  const supabase = await createClient();
+  const { error } = await supabase.from("team_stories").delete().eq("id", storyId).eq("area_id", areaId);
+  if (error) return { error: error.message };
+  revalidatePath("/my");
+  return { ok: true };
+}

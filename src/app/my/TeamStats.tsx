@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { StatsRow } from "@/lib/instagram-stats";
 import { areaLabel, type AreaSummary } from "@/lib/types";
+import TeamImpact, { type ImpactView } from "./TeamImpact";
 
 /** A row of team_overview (supabase/migrations/20261030120000_dashboard_goals.sql). */
 export type TeamOverview = { people: number; uploads_30d: number; posted_30d: number; pending: number; posted_total: number; last_upload_at: string | null; last_posted_at: string | null };
@@ -13,7 +14,7 @@ const when = (iso: string) => new Date(iso).toLocaleString("en-US", { month: "sh
  * team's account (cached by src/lib/instagram-stats.ts) and what this site knows about
  * the team's videos. `compact` is the one-line form admins see for teams they are not on.
  */
-export default function TeamStats({ team, overview, stats, isLead, compact = false }: { team: AreaSummary; overview: TeamOverview | null; stats: StatsRow | null; isLead: boolean; compact?: boolean }) {
+export default function TeamStats({ team, overview, stats, impact, isLead, compact = false }: { team: AreaSummary; overview: TeamOverview | null; stats: StatsRow | null; impact: ImpactView | null; isLead: boolean; compact?: boolean }) {
   const handle = (team.instagram_handle ?? stats?.username ?? "").replace(/^@/, "");
   const connected = !!team.instagram_user_id;
   const p = stats?.profile ?? null;
@@ -27,7 +28,7 @@ export default function TeamStats({ team, overview, stats, isLead, compact = fal
     return (
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-sm">
         <span><b>{areaLabel(team)}</b>{handle ? <> · <a href={`https://www.instagram.com/${handle}/`} target="_blank" rel="noreferrer" className="text-accent">@{handle}</a></> : " · no Instagram account on file"}{!connected && " · not connected"}</span>
-        <span className="text-muted">{p ? `${n(p.followers)} followers · ` : ""}{overview ? `${overview.posted_30d} posted and ${overview.uploads_30d} sent in 30 days · ${overview.pending} waiting` : ""}</span>
+        <span className="text-muted">{p ? `${n(p.followers)} followers · ` : ""}{overview ? `${overview.posted_30d} posted and ${overview.uploads_30d} sent in 30 days · ${overview.pending} waiting` : ""}{impact?.latest ? ` · ${[["asked for missionaries", impact.latest.requests], ["sent on", impact.latest.referrals], ["baptized", impact.latest.baptisms]].filter(([, v]) => typeof v === "number").map(([l, v]) => `${n(v as number)} ${l}`).join(", ")}` : ""}</span>
       </div>
     );
   }
@@ -52,6 +53,8 @@ export default function TeamStats({ team, overview, stats, isLead, compact = fal
       {!connected && team.instagram_lost_at && (
         <p className="mt-2 text-xs text-danger">Instagram ended the connection on {new Date(team.instagram_lost_at).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}: {team.instagram_lost_reason}</p>
       )}
+
+      {impact && <TeamImpact areaId={team.id} canEdit={isLead} impact={impact} />}
 
       {p ? (
         <>

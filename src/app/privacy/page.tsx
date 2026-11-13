@@ -5,7 +5,7 @@ export const metadata: Metadata = { title: "Privacy policy" };
 
 export default function PrivacyPage() {
   return (
-    <LegalPage title="Privacy policy" updated="October 30, 2026">
+    <LegalPage title="Privacy policy" updated="November 12, 2026">
       <p>Assigned To Labor (&ldquo;we&rdquo;) helps people share short videos about their faith. This page explains what we collect and how we use it.</p>
       <h2>What we collect</h2>
       <ul>
@@ -16,6 +16,8 @@ export default function PrivacyPage() {
         <li><b>An automatic transcript and a suggested caption</b> for each video you submit, to save the volunteer lead time. The audio is transcribed by a speech-to-text service (ElevenLabs) and a draft caption is written from the transcript by an AI model (Anthropic&rsquo;s Claude). Both providers process the audio and text only on our behalf; they do not receive your name or email. The transcript and the draft stay with the video&rsquo;s record and are deleted with it. The lead may change or discard the draft before anything is posted. Since November 2026 the words of the transcript are also drawn into the video as captions before it is posted, with a short headline the lead chooses and the sound level evened out; the lead reads and can correct the words first, and the captioned copy is deleted with the original.</li>
         <li><b>An upload goal and, if you add it, a phone number</b>, both chosen by you on your dashboard. The goal (how often you mean to send a video) is used to email you a reminder when the next one is nearly due; the leads of your teams and site administrators can see your goal, when you last sent a video, and your phone number, so they can encourage you. You can change or remove both at any time.</li>
         <li><b>A team&rsquo;s Instagram numbers</b> (followers, recent posts with their likes and comments, and reach and views when the account allowed it), fetched with the team&rsquo;s connection and shown only to the people on that team.</li>
+        <li><b>A team&rsquo;s form page</b> (an address such as assignedtolabor.org/philippines, linked from the team&rsquo;s social media). The form shown there, for people who would like to meet with missionaries, is not ours: it is run by the organisation named on the form (today Gathering Israel, through Google Forms), and what you type into it goes to them under their privacy policy, never to us. We only count how many times the page was opened, per day, with nothing about who opened it.</li>
+        <li><b>What a team&rsquo;s channel has led to</b>: totals (how many people asked to meet missionaries, how many were baptized) and short stories that the team&rsquo;s leads enter, shown only to the people on that team. We do not receive the names or contact details of people who filled in a form; a story holds only what a lead chose to write.</li>
         <li><b>Basic technical data</b> needed to run the service, such as the time of your upload and standard server logs.</li>
       </ul>
       <h2>How we use it</h2>

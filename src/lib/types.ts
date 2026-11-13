@@ -30,6 +30,10 @@ export type Area = {
   instagram_lost_notified_at: string | null;
   /** Usernames invited as collaborators on every one-tap post (2026-11-01); the lead can change them per post. */
   instagram_collaborators: string[];
+  /** The team's page on this site, assignedtolabor.org/<slug>, and the form it shows (2026-11-12). See src/lib/team-page.ts. */
+  slug: string | null;
+  referral_form_url: string | null;
+  referral_form_title: string | null;
   is_active: boolean;
   sort_order: number;
   created_at: string;
@@ -105,9 +109,9 @@ export type RenderState = "queued" | "rendering" | "done" | "failed" | "skipped"
 export type RenderMeta = { cues: number; headline: boolean; width: number; height: number; seconds: number | null; bytes: number; encodeMs: number; videoCopied: boolean; loudness: { input: number | null; target: number } | null; font: string; note?: string };
 export type CaptionState = "done" | "failed" | "skipped";
 
-export type AreaSummary = Pick<Area, "id" | "name" | "language" | "instagram_handle" | "instagram_user_id" | "instagram_connected_at" | "instagram_lost_at" | "instagram_lost_reason" | "instagram_collaborators">;
+export type AreaSummary = Pick<Area, "id" | "name" | "language" | "instagram_handle" | "instagram_user_id" | "instagram_connected_at" | "instagram_lost_at" | "instagram_lost_reason" | "instagram_collaborators" | "slug" | "referral_form_url">;
 /** The columns a page selects for a video's team. */
-export const AREA_SUMMARY_COLS = "id, name, language, instagram_handle, instagram_user_id, instagram_connected_at, instagram_lost_at, instagram_lost_reason, instagram_collaborators";
+export const AREA_SUMMARY_COLS = "id, name, language, instagram_handle, instagram_user_id, instagram_connected_at, instagram_lost_at, instagram_lost_reason, instagram_collaborators, slug, referral_form_url";
 export type VideoWithArea = Video & { area: AreaSummary | null };
 
 export type ApplicationKind = "start" | "join";
@@ -133,6 +137,11 @@ export type TeamApplication = {
   outcome_notified_at: string | null;
   created_at: string;
 };
+/** A team's running totals as of a day (team_impact_reports); typed in by its leads or an admin for now. */
+export type ImpactReport = { id: string; area_id: string; as_of: string; requests: number | null; referrals: number | null; baptisms: number | null; source: string; created_at: string };
+/** A short story for the team about someone the channel reached (team_stories). */
+export type TeamStory = { id: string; area_id: string; title: string; body: string; happened_on: string | null; created_at: string };
+
 export const APPLICATION_STATUS_LABEL: Record<ApplicationStatus, string> = { pending: "Waiting for a decision", approved: "Approved", declined: "Declined" };
 
 export function areaLabel(a: Pick<Area, "name" | "language"> | null | undefined): string {
