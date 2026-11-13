@@ -252,10 +252,29 @@ async function advancePublishLocked(db: Db, v: VideoRow): Promise<PublishOutcome
 }
 
 /** Cron: move every in-flight post along, so a lead who closed the page still gets it posted. */
+/** How long a new connection's posts are left to the page that made them (see `justConnected`). */
+export const FRESH_CONNECTION_MINUTES = 15;
+
+/**
+ * Teams whose Instagram account was connected in the last few minutes. An unscoped
+ * sweep leaves their posts alone: a test on a local build connects a MOCK account in the
+ * live database, and production's own cron, finding the test's queued post, would send
+ * the mock token to the real Instagram, be refused (code 190) and forget the connection
+ * mid-test (seen 2026-11-12). A real lead who connects and posts at once loses nothing:
+ * the page drives the post, and the cron takes over once the connection is this old.
+ */
+export async function justConnected(db: Db): Promise<string[]> {
+  const since = new Date(Date.now() - FRESH_CONNECTION_MINUTES * 60_000).toISOString();
+  const { data, error } = await db.from("instagram_accounts").select("area_id").gt("connected_at", since);
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as { area_id: string }[]).map((r) => r.area_id);
+}
+
 export async function sweepPublishing(db: Db, dry = false, only: string[] | null = null): Promise<{ id: string; before: PublishState; after: PublishOutcome | null }[]> {
   if (only && only.length === 0) return [];
   let q = db.from("videos").select("id, publish_state").in("publish_state", ["queued", "processing"]);
   if (only) q = q.in("id", only);
+  else { const fresh = await justConnected(db); if (fresh.length) q = q.or(`area_id.is.null,area_id.not.in.(${fresh.join(",")})`); }
   const { data, error } = await q.order("publish_requested_at", { ascending: true }).limit(50);
   if (error) throw new Error(error.message);
   const out: { id: string; before: PublishState; after: PublishOutcome | null }[] = [];

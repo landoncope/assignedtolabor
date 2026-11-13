@@ -1,17 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { formatDate, growth, IMPACT_FIELDS } from "@/lib/impact";
-import type { ImpactReport, TeamStory } from "@/lib/types";
+import { formatDate, growth, IMPACT_FIELDS, type ImpactView } from "@/lib/impact";
+import type { TeamStory } from "@/lib/types";
 import { deleteStory, saveImpact, saveStory } from "./actions";
 
-export type ImpactView = {
-  latest: ImpactReport | null;
-  previous: ImpactReport | null;
-  stories: TeamStory[];
-  /** The team's form page: its address without the scheme, and how often it was opened in 30 days. Null when it has none. */
-  page: { address: string; href: string; opens30: number } | null;
-};
+export type { ImpactView };
 
 const n = (v: number) => new Intl.NumberFormat("en-US").format(v);
 /** Today where the lead is (only ever called in the browser, once a form is open). */

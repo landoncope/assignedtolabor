@@ -12,9 +12,9 @@ const when = (iso: string) => new Date(iso).toLocaleString("en-US", { month: "sh
 /**
  * The team's numbers for its members (2026-10-30, Travis): what Instagram says about the
  * team's account (cached by src/lib/instagram-stats.ts) and what this site knows about
- * the team's videos. `compact` is the one-line form admins see for teams they are not on.
+ * the team's videos. (Admins see every channel in src/components/ChannelOverview.tsx.)
  */
-export default function TeamStats({ team, overview, stats, impact, isLead, compact = false }: { team: AreaSummary; overview: TeamOverview | null; stats: StatsRow | null; impact: ImpactView | null; isLead: boolean; compact?: boolean }) {
+export default function TeamStats({ team, overview, stats, impact, isLead }: { team: AreaSummary; overview: TeamOverview | null; stats: StatsRow | null; impact: ImpactView | null; isLead: boolean }) {
   const handle = (team.instagram_handle ?? stats?.username ?? "").replace(/^@/, "");
   const connected = !!team.instagram_user_id;
   const p = stats?.profile ?? null;
@@ -23,15 +23,6 @@ export default function TeamStats({ team, overview, stats, impact, isLead, compa
   const comments = posts.reduce((a, m) => a + (m.comments ?? 0), 0);
   const views = posts.some((m) => typeof m.views === "number") ? posts.reduce((a, m) => a + (m.views ?? 0), 0) : null;
   const ins = stats?.insights ?? null;
-
-  if (compact) {
-    return (
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-sm">
-        <span><b>{areaLabel(team)}</b>{handle ? <> · <a href={`https://www.instagram.com/${handle}/`} target="_blank" rel="noreferrer" className="text-accent">@{handle}</a></> : " · no Instagram account on file"}{!connected && " · not connected"}</span>
-        <span className="text-muted">{p ? `${n(p.followers)} followers · ` : ""}{overview ? `${overview.posted_30d} posted and ${overview.uploads_30d} sent in 30 days · ${overview.pending} waiting` : ""}{impact?.latest ? ` · ${[["asked for missionaries", impact.latest.requests], ["sent on", impact.latest.referrals], ["baptized", impact.latest.baptisms]].filter(([, v]) => typeof v === "number").map(([l, v]) => `${n(v as number)} ${l}`).join(", ")}` : ""}</span>
-      </div>
-    );
-  }
 
   return (
     <section className="card" aria-label={`${areaLabel(team)} team`}>

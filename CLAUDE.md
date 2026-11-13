@@ -89,8 +89,13 @@ at assignedtolabor.org/<something>. Shipped the same day (PR #8): each team's fo
 address of ours with its opens counted, and figures and stories on the dashboard, typed
 in by the team's leads for now. The automatic sync waits on Gathering Israel, who run
 the forms; see "Team pages and what the channel has led to" under Decisions.
+The same day, at Travis's request: admins get **every channel at a glance** (members,
+followers, last post, posts in 7 and 30 days, videos waiting) on the dashboard and the
+Admin page (PR #9), and the last three channels got their Instagram accounts: Spanish
+@hasta.reconocerle, Swahili @yesu.ndiye.njia, French now @ensemble_en_christ_, all
+invited as testers of the Meta app (Pending until each accepts).
 
-### Where we paused (2026-11-12: team form pages and channel results are live; the sync with Gathering Israel waits on Travis's answers)
+### Where we paused (2026-11-12: form pages, channel results and the admins' channel overview are live; waiting on Gathering Israel's answers and on three new accounts accepting their tester invites)
 
 Nothing is half-built. Pick up here.
 
@@ -417,6 +422,26 @@ Nothing is half-built. Pick up here.
   whether Travis can see that data himself today; whether they are happy for their
   forms to show inside our pages and for the bios to point there; who writes the
   stories. The ways to sync are listed in the decision.
+- **2026-11-12 later, the channel overview and the last three accounts.** Travis: "an
+  overview of each channel" for admins (team members, followers, most recent post,
+  posts in the last 7 days and the last month), and three accounts to add: Spanish
+  @hasta.reconocerle, Swahili @yesu.ndiye.njia, and French changed to
+  @ensemble_en_christ_. Done the same day: the overview (see "Every channel at a
+  glance" under the Dashboard decision); each profile checked on instagram.com (all
+  three exist and are new: 1, 2 and 0 posts); the handles set on the team rows; the
+  three added as Instagram Testers on the Meta app from Landon's Chrome (one dialog
+  takes several usernames; no password re-check), status Pending. The Spanish bio
+  links a fifth Gathering Israel form (forms.gle/imFpy1mnBfrCgZnb7, "Reunirse con los
+  misioneros", document "Updated Holy Rebellion (Spanish Mexico)"), so
+  assignedtolabor.org/spanish is live with it; the Swahili and French bios have no
+  form link yet. The old French invite, ensembleenchrist1, was never accepted and is
+  still listed as Pending (left alone; remove it on the roles page if wanted).
+  **Next, by people:** whoever runs each of the three accounts accepts the invite at
+  instagram.com/accounts/manage_access (Tester Invites tab, in a browser, logged in to
+  that account; the account must be a professional one), then a lead or an admin taps
+  Connect on the Review or Admin page from that person's own device. Taiwan still has
+  to reconnect (its row says "connection lost"). Spanish has 12 videos waiting for
+  review and Swahili 4, with one and no people on the team.
 
 ### After the 2026-09-19 event (do these, then delete this list)
 
@@ -571,6 +596,12 @@ Nothing is half-built. Pick up here.
    (name Slovak, language Slovak, handle milosrdenstvo.vasho.vykupitela, sort_order
    60, no lead yet). Spanish and Swahili: Travis is still working on them. Still to do: Travis as a second
    administrator, the app icon, and the other five teams' accounts as testers.
+   **2026-11-12:** Travis sent the last three. Added as Instagram Testers (Pending):
+   `hasta.reconocerle` (Spanish), `yesu.ndiye.njia` (Swahili), `ensemble_en_christ_`
+   (French, replacing ensembleenchrist1, which never accepted and is still listed).
+   The Add People dialog takes several usernames at once; pick each from the
+   suggestions, which list look-alikes (ensemble_en_christ without the underscore is
+   someone else). All seven teams now have an account on file and a tester entry.
 9. ElevenLabs and the Claude API DONE 2026-10-15 (Claude drove the pages in Landon's
    Chrome; Landon paid and pasted): ElevenLabs account of Landon's, upgraded Free ->
    Starter (monthly, $6, first month $1; Speech to Text 1 h 31 m a month, extra API
@@ -852,8 +883,22 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     the posted card naming the invitees), 92 later the same day (the render step, see
     "Captions drawn into the video" under Decisions), 96 the same night (the by-hand
     flow's captioned download and "prepare the captioned video", the lock, a render
-    failure counted once). Its cron calls are scoped to its own rows (see the cron
-    above): real posts are in flight now.
+    failure counted once), 97 on 2026-11-12 (an unscoped sweep leaves a
+    just-connected team's post alone). Its cron calls are scoped to its own rows (see
+    the cron above): real posts are in flight now.
+    **The other direction (2026-11-12):** production's cron is NOT scoped, and during a
+    run it found the check's queued post ("Hook four", the one left for the cron),
+    claimed its render, then sent the mock token to the real Instagram: refused (190),
+    the mock team's connection forgotten, the rest of the run failed ("This video is
+    being rendered already", then no one-tap button). No real team was touched. Since
+    that day an unscoped `sweepPublishing` / `sweepRenders` skips teams whose account
+    was connected in the last 15 minutes (`justConnected`, `FRESH_CONNECTION_MINUTES`
+    in `instagram-publish.ts`): a test's mock connection is always that young, and a
+    real lead who connects and posts at once is served by the page, the cron taking
+    over once the connection is 15 minutes old. The probe and the token refresh
+    already skipped connections younger than a day. If the mock team's loss is ever
+    written while its row exists, the notify sweep would email the real admins about
+    "Instagram Mock Team"; the check marks it told at once where it provokes a loss.
     The mock takes `/__config?badcode=1` to hand back a bad code once and
     `/__config?deadtoken=1` to reject the token (code 190) on the next Graph call.
     Against the real Instagram, two helpers: `node scripts/dev/instagram-live-test.mjs
@@ -967,8 +1012,20 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     posted in 30 days, waiting for review, people on the team. Not connected: the card
     says so and leads get a link to Connect. Not on a team: Travis's words, "Apply to
     start or join a team. After joining, you will see your team's data here", with
-    buttons to /my/teams and /lead. Admins also get a compact one-line list of every
-    other team (cached numbers only).
+    buttons to /my/teams and /lead.
+  - **Every channel at a glance (2026-11-12, Travis; PR #9).** Admins get one table of
+    all active teams, on the dashboard under their own team cards and at the top of
+    /admin (`src/components/ChannelOverview.tsx`, a table on a wide screen and a card
+    per channel on a phone; `src/lib/channel-overview.ts`): people on the team (leads
+    included), followers, the most recent post with its link and how long ago, posts
+    in the last 7 and 30 days, and videos waiting for review. It replaced the one-line
+    list of other teams. Followers and the post columns come from Instagram when the
+    account is connected and its stored numbers are under a day old (everything on
+    the account counts, posted from the site or by hand; Instagram hands us the newest
+    24, so a busy month reads "24+"); otherwise the post columns count what this site
+    recorded as posted and carry an asterisk, and an older follower count shows its
+    day. "Results and stories" on a row opens the channel's figures and stories, which
+    an admin can edit for ANY team there (until this, only for teams the admin was on).
   - **Upload goal** (`GoalCard.tsx`, `src/lib/goals.ts`): four buttons, Twice a week
     (every 84 h), Once a week (7 d), Twice a month (15 d), Once a month (30 d).
     Choosing one is the agreement to reminder emails (the small print says so and
@@ -1003,12 +1060,18 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
   - **Instagram numbers cache:** `instagram_stats` (one row per team, RLS on with no
     policies), `src/lib/instagram-stats.ts`. A first dashboard view after connecting
     fetches inline (2 to 15 requests); a view of numbers older than 6 h refreshes them
-    after the response (`after()` from next/server). ONLY a view by someone on the
-    team fetches, never a cron and never the admin's list of other teams: a local test
-    build talks to the mock Instagram with the live database, and a real token sent to
-    the mock (or a mock token sent to the real Instagram by production's cron) comes
-    back code 190, which forgets the connection. A 190 during a stats refresh forgets
-    the connection too, like a failed post.
+    after the response (`after()` from next/server). A view by someone on the team
+    fetches that team only, and never a cron: a local test build talks to the mock
+    Instagram with the live database, and a real token sent to the mock (or a mock
+    token sent to the real Instagram by production's cron) comes back code 190, which
+    forgets the connection. A 190 during a stats refresh forgets the connection too,
+    like a failed post. Since 2026-11-12 the admins' overview refreshes EVERY
+    connected team whose numbers are older than 6 h (`freshStatsForOverview`: in
+    parallel, waited on for at most 5 s, the rest finishing after the response),
+    under two guards against that hazard: only when the client is pointed at the real
+    Instagram (`usingRealInstagram()`, false whenever `INSTAGRAM_GRAPH_BASE` is set),
+    and only for connections older than a day (a test's mock connection lives for
+    minutes). Keep both if this is ever touched.
   - **Reach and views (done 2026-10-30):** `instagram_business_manage_insights` is on
     the Meta app (Use cases -> Customize -> Permissions; Standard Access, no review for
     tester accounts) and `INSTAGRAM_INSIGHTS=1` is set in Vercel, so Connect now asks
@@ -1189,7 +1252,8 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
     and admins "Update the figures", "Add a story", Edit, and Delete (which asks
     first). Actions `saveImpact`, `saveStory`, `deleteStory` in `src/app/my/actions.ts`
     go through the session, so RLS decides. A member with nothing to see gets no
-    box. The admins' one-line list of other teams carries the figures too. The
+    box. Admins reach every team's figures and stories from the channel overview
+    ("Results and stories" on its row). The
     upload reminder email (`goal_reminder`) gains one sentence per team the person
     is on that has figures ("Through the Philippines channel so far, 14 people asked
     to meet the missionaries, ..."). The story form says to use a first name only
@@ -1214,13 +1278,17 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
   - **Tests:** `scripts/dev/impact-sql-check.sh` (28 rolled-back rule checks: the
     address format and uniqueness, who reads and writes figures and stories, the
     counter closed to everyone but the server) and `node scripts/dev/team-page-check.mjs
-    http://localhost:3001 [dir]` (38 browser checks on a local build, header has the
+    http://localhost:3001 [dir]` (50 browser checks on a local build, header has the
     commands: the admin sets the address and the form's short link, bad addresses and
     links are refused, the public page shows the form in a frame that fills a phone
     screen, opens are counted once per visit and not for previews, a non-Google link
     is forwarded, the lead enters and corrects figures and a story, a member reads
-    but cannot change them, an outsider sees nothing; it shows the English team's
-    real form in a throwaway team's page and never submits it).
+    but cannot change them, an outsider sees nothing; the admins' overview with a
+    channel's site counts, then stored Instagram numbers, then stale ones, its
+    results corrected from the row, cards on a phone, and no overview for a member;
+    it shows the English team's real form in a throwaway team's page and never
+    submits it; its test videos are marked as already notified so no sweep emails
+    anyone).
 - **One-tap posting, researched 2026-10-03** (primary sources read that day by a
   research agent; notes in the session scratchpad are not kept, so the facts are here):
   - Instagram, with "Instagram API with Instagram Login" (permissions
@@ -1276,9 +1344,10 @@ Travis's AI session on 2026-09-04), and the reusable source files are in
 
 ## Open questions (Landon is asking Travis)
 
-1. Instagram handles for the English, Spanish, French and Swahili teams (Travis,
-   2026-09-17: the leads will apply through the Teams page; admins approve them as
-   leads). Philippines' lead is Brady Gordon per Travis (2026-09-17), who is getting an
+1. ANSWERED 2026-11-12: every team has an Instagram account on file (Spanish
+   @hasta.reconocerle, Swahili @yesu.ndiye.njia, French @ensemble_en_christ_ were the
+   last). Leads for the teams without one (Travis, 2026-09-17: the leads will apply
+   through the Teams page; admins approve them as leads). Philippines' lead is Brady Gordon per Travis (2026-09-17), who is getting an
    account; the seeded lead `holyrebellionph@gmail.com` ("Christian") is still a lead.
 2. Team lead application (asked 2026-10-03): should it replace the two lighter routes
    to lead (the tick on a join request, "Start a team")? Does "audience or location"
@@ -1335,9 +1404,11 @@ src/lib/render-state.ts     renderKey / renderCurrent / renderSkipReason: the pu
 src/lib/render.ts           the render step: ffmpeg (ffmpeg-static) draws the ASS captions and headline, normalises loudness
 assets/fonts/               Noto Sans Bold and Noto Sans TC Bold (OFL) for the captions, traced into the render functions
 src/lib/team-page.ts        a team's page address (slug rules, reserved words) and its form link (resolve, embed or forward)
-src/lib/impact.ts           what a channel has led to: the three figures, growth, the sentence for emails
+src/lib/impact.ts           what a channel has led to: the three figures, growth, the sentence for emails, loadImpact
+src/lib/channel-overview.ts every channel at a glance for admins: members, followers, last post, posts in 7 and 30 days
 src/components/             Nav, VideoRecorder (multi-clip + teleprompter), VideoPlayer (signed URL),
-                            InstagramConnections (connect/disconnect a team's account)
+                            InstagramConnections (connect/disconnect a team's account),
+                            ChannelOverview (the admins' table of every channel)
 src/app/                    / landing, /upload flow, /qr poster, /login, /auth/*, /my (the
                             dashboard: team numbers, upload goal, the lead's view, my videos),
                             /my/teams (join/start a team), /lead (+/video: team lead
@@ -1365,7 +1436,8 @@ rolled-back transaction, by setting the JWT claims Postgres sees),
 `scripts/dev/profiles-guard-check.sh` (8), `scripts/dev/dashboard-sql-check.sh`
 (23, same harness), `scripts/dev/render-sql-check.sh` (4),
 `scripts/dev/impact-sql-check.sh` (28), `node scripts/dev/team-page-check.mjs
-http://localhost:3001 [dir]` (38 browser checks of team pages and channel results) and
+http://localhost:3001 [dir]` (50 browser checks of team pages, channel results and the
+admins' channel overview) and
 `node scripts/dev/lead-flow-check.mjs http://localhost:3001 fake-cam.y4m [dir]` (44
 browser checks of the team lead application; build and start with
 `NEXT_PUBLIC_TURNSTILE_SITE_KEY= NEXT_PUBLIC_SITE_URL=http://localhost:3001`). Their

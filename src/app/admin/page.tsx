@@ -1,8 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import ChannelOverview from "@/components/ChannelOverview";
 import InstagramConnections from "@/components/InstagramConnections";
 import Nav from "@/components/Nav";
 import { requireAdmin } from "@/lib/auth";
+import { loadChannelOverview } from "@/lib/channel-overview";
+import { siteUrl } from "@/lib/email";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { instagramNotice } from "@/lib/instagram-notice";
 import type { Area, Profile } from "@/lib/types";
@@ -16,7 +20,8 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
   const notice = instagramNotice(sp);
   const viewer = await requireAdmin("/admin");
   const supabase = await createClient();
-  const [{ data: areas }, { data: managers }, { data: invites }, { data: members }, { count: teamRequestCount }, { count: leadCount }, { data: users }] = await Promise.all([
+  const [channels, { data: areas }, { data: managers }, { data: invites }, { data: members }, { count: teamRequestCount }, { count: leadCount }, { data: users }] = await Promise.all([
+    loadChannelOverview(supabase, createAdminClient(), siteUrl),
     supabase.from("areas").select("*").order("sort_order").order("name"),
     supabase.from("area_managers").select("area_id, user_id, profile:profiles(id, email, display_name)"),
     supabase.from("manager_invites").select("area_id, email"),
@@ -43,7 +48,8 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
         <Link href="/review/requests" className={`mt-3 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${requestCount ? "border-gold/50 bg-gold/10 font-semibold" : "border-line text-muted hover:text-foreground"}`}>
           {requestCount ? `${requestCount} team ${requestCount === 1 ? "request is" : "requests are"} waiting` : "Team requests"} ›
         </Link>
-        <section className="mt-6">
+        {channels.length > 0 && <div className="mt-6"><ChannelOverview rows={channels} /></div>}
+        <section className="mt-10">
           <h2 className="text-lg font-semibold">Teams and leads</h2>
           <p className="mt-1 text-sm text-muted">A team is a place plus a language. Leads review everything sent to their team and approve people who ask to join it. Add a lead by email; if they haven&apos;t signed in yet, it takes effect the first time they do.</p>
           <AreasAdmin areas={withManagers} />

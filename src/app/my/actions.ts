@@ -135,6 +135,7 @@ export async function saveImpact(areaId: string, form: FormData): Promise<Done> 
   const { error } = await supabase.from("team_impact_reports").upsert({ area_id: areaId, as_of, ...figures, source: "manual", created_by: v.userId }, { onConflict: "area_id,as_of" });
   if (error) return { error: error.message };
   revalidatePath("/my");
+  revalidatePath("/admin");
   return { ok: true };
 }
 
@@ -153,6 +154,7 @@ export async function saveStory(areaId: string, storyId: string | null, form: Fo
     : await supabase.from("team_stories").insert({ area_id: areaId, title, body, happened_on, created_by: v.userId });
   if (error) return { error: error.message };
   revalidatePath("/my");
+  revalidatePath("/admin");
   return { ok: true };
 }
 
@@ -163,5 +165,6 @@ export async function deleteStory(areaId: string, storyId: string): Promise<Done
   const { error } = await supabase.from("team_stories").delete().eq("id", storyId).eq("area_id", areaId);
   if (error) return { error: error.message };
   revalidatePath("/my");
+  revalidatePath("/admin");
   return { ok: true };
 }

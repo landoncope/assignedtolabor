@@ -10,6 +10,8 @@ import { siteUrl } from "@/lib/email";
 const AUTHORIZE_BASE = process.env.INSTAGRAM_AUTHORIZE_BASE ?? "https://www.instagram.com";
 const OAUTH_BASE = process.env.INSTAGRAM_OAUTH_BASE ?? "https://api.instagram.com";
 const GRAPH_BASE = process.env.INSTAGRAM_GRAPH_BASE ?? "https://graph.instagram.com";
+/** False on a test build that points the client at the mock (scripts/dev/instagram-mock.mjs). */
+export const usingRealInstagram = () => !process.env.INSTAGRAM_GRAPH_BASE;
 const VERSION = process.env.INSTAGRAM_API_VERSION ?? "v24.0";
 
 export const INSTAGRAM_SCOPES = ["instagram_business_basic", "instagram_business_content_publish"] as const;

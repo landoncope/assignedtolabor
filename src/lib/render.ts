@@ -6,7 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import ffmpegStatic from "ffmpeg-static";
 import { type Cue, isCueList, noSpaces } from "./caption-cues";
 import { captionsConfigured, retimeVideo, RETIME_COLS, type RetimeRow } from "./captions";
-import { startPublish, type PublishOutcome } from "./instagram-publish";
+import { justConnected, startPublish, type PublishOutcome } from "./instagram-publish";
 import { renderKey, renderSkipReason, STALE_MINUTES } from "./render-state";
 import type { RenderMeta, RenderState } from "./types";
 
@@ -260,6 +260,7 @@ export async function sweepRenders(db: Db, dry = false, only: string[] | null = 
   const stale = new Date(Date.now() - STALE_MINUTES * 60_000).toISOString();
   let q = db.from("videos").select("id, render_state, render_started_at").eq("publish_state", "queued").or(`render_state.eq.queued,and(render_state.eq.rendering,render_started_at.lt.${stale})`);
   if (only) q = q.in("id", only);
+  else { const fresh = await justConnected(db); if (fresh.length) q = q.not("area_id", "in", `(${fresh.join(",")})`); }
   const { data, error } = await q.order("publish_requested_at", { ascending: true }).limit(1);
   if (error) throw new Error(error.message);
   const out: { id: string; result: string }[] = [];
