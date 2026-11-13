@@ -1,5 +1,6 @@
-// End-to-end check of team pages (assignedtolabor.org/<slug>) and "what the channel has
-// led to" on the dashboard, through the real pages in this Mac's Chrome.
+// End-to-end check of team pages (assignedtolabor.org/<slug>), "what the channel has led
+// to" on the dashboard, and the admins' overview of every channel, through the real
+// pages in this Mac's Chrome.
 //   1. NEXT_PUBLIC_TURNSTILE_SITE_KEY= NEXT_PUBLIC_SITE_URL=http://localhost:3001 npx next build
 //      && (same env) npx next start -p 3001
 //   2. node scripts/dev/team-page-check.mjs http://localhost:3001 [screenshot-dir]
@@ -198,12 +199,64 @@ try {
   await story.getByRole("button", { name: "Delete" }).click();
   await story.getByRole("button", { name: "Yes, delete" }).click();
   check("the story is removed", (await until(async () => ((await db.from("team_stories").select("id").eq("area_id", created.areaId)).data ?? []).length === 0)) === true);
+
+  // Every channel at a glance, for admins: on the Admin page and on the dashboard.
+  const row = (p) => p.locator(`tbody[data-channel="${created.areaId}"]`);
+  const col = async (p, name) => ((await row(p).locator(`[data-col="${name}"]`).textContent()) ?? "").trim();
+  const iso = (days) => new Date(Date.now() - days * 86400_000).toISOString();
+  const shortDay = (days) => new Date(Date.now() - days * 86400_000).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  await page.goto(`${base}/admin`);
+  check("the Admin page opens with every channel at a glance", (await page.locator("#channels").textContent()).includes("Every channel at a glance") && (await row(page).count()) === 1 && (await page.locator("#channels tbody").count()) >= 2);
+  check("a new channel: its people, no followers, nothing posted", (await col(page, "members")) === "2" && (await col(page, "followers")) === "–" && (await col(page, "last")) === "None yet" && (await col(page, "posts7")) === "0*" && (await col(page, "posts30")) === "0*" && (await col(page, "pending")) === "0",
+    `${await col(page, "members")} | ${await col(page, "followers")} | ${await col(page, "last")} | ${await col(page, "posts7")} | ${await col(page, "posts30")} | ${await col(page, "pending")}`);
+  // Rows as the site would have them; marked as already notified so no sweep emails anyone about them.
+  const vid = async (fields) => { const { error } = await db.from("videos").insert({ user_id: admin.id, area_id: created.areaId, language: "Klingon", uploader_name: "page-check", caption_state: "skipped", managers_notified_at: iso(0), ...fields }); if (error) throw new Error(error.message); };
+  for (const [days, tag] of [[2, "TWO"], [20, "TWENTY"], [45, "FORTYFIVE"]]) await vid({ status: "posted", posted_at: iso(days), post_url: `https://www.instagram.com/reel/PAGECHECK${tag}/`, file_purged_at: iso(0), uploader_notified_status: "posted" });
+  await vid({ status: "pending" });
+  await page.reload();
+  check("posts recorded on this site are counted for a channel that is not connected", (await col(page, "posts7")) === "1*" && (await col(page, "posts30")) === "2*" && (await col(page, "pending")) === "1", `${await col(page, "posts7")} | ${await col(page, "posts30")} | ${await col(page, "pending")}`);
+  check("with the last post, its day and its link", (await col(page, "last")) === `${shortDay(2)}2 days ago` && (await row(page).locator('[data-col="last"] a').getAttribute("href")) === "https://www.instagram.com/reel/PAGECHECKTWO/", await col(page, "last"));
+  check("and the note says which figures are from this site only", (await page.locator("#channels").textContent()).includes("only posts made or marked as posted on this site are counted"));
+  // Instagram's numbers as the refresh stores them (a connection made a moment ago is never refreshed from here).
+  const media = [[1, "IGONE"], [5, "IGFIVE"], [12, "IGTWELVE"]].map(([days, tag], i) => ({ id: String(i), caption: null, mediaType: "VIDEO", productType: "REELS", permalink: `https://www.instagram.com/reel/${tag}/`, thumbnailUrl: null, timestamp: iso(days), likes: 1, comments: 0 }));
+  await db.from("areas").update({ instagram_user_id: `page-check-${ts}`, instagram_connected_at: iso(0) }).eq("id", created.areaId);
+  await db.from("instagram_stats").upsert({ area_id: created.areaId, username: "atl_page_check", fetched_at: iso(0), succeeded_at: iso(0), profile: { username: "atl_page_check", name: null, pictureUrl: null, followers: 1234, follows: 1, mediaCount: 3 }, media, insights: null, error: null });
+  await page.reload();
+  check("a connected channel shows Instagram's followers and posts", (await col(page, "followers")) === "1,234" && (await col(page, "posts7")) === "2" && (await col(page, "posts30")) === "3" && (await col(page, "last")) === `${shortDay(1)}yesterday` && (await row(page).locator('[data-col="last"] a').getAttribute("href")) === "https://www.instagram.com/reel/IGONE/",
+    `${await col(page, "followers")} | ${await col(page, "posts7")} | ${await col(page, "posts30")} | ${await col(page, "last")}`);
+  await db.from("instagram_stats").update({ succeeded_at: iso(3) }).eq("area_id", created.areaId);
+  await page.reload();
+  check("numbers Instagram last gave days ago: followers with their day, posts from this site", (await col(page, "followers")) === `1,234as of ${shortDay(3)}` && (await col(page, "posts7")) === "1*" && (await col(page, "posts30")) === "2*", `${await col(page, "followers")} | ${await col(page, "posts7")} | ${await col(page, "posts30")}`);
+  await db.from("instagram_stats").delete().eq("area_id", created.areaId);
+  await db.from("areas").update({ instagram_user_id: null, instagram_connected_at: null }).eq("id", created.areaId);
+  // An admin opens a channel's results from the row and corrects them there.
+  await page.reload();
+  await row(page).getByRole("button", { name: /^Results: 14 asked for missionaries · 6 sent on · 1 baptized$/ }).click();
+  const inRow = row(page).locator("[data-impact]");
+  await inRow.getByRole("button", { name: "Update the figures" }).click();
+  await inRow.getByLabel("Baptized", { exact: true }).fill("2");
+  await inRow.getByRole("button", { name: "Save the figures" }).click();
+  check("an admin corrects a channel's figures from its row", (await until(async () => ((await db.from("team_impact_reports").select("baptisms").eq("area_id", created.areaId).order("as_of", { ascending: false }).limit(1)).data ?? [])[0]?.baptisms === 2)) === true);
+  await row(page).getByRole("button", { name: "Hide results" }).click();
+  await row(page).getByRole("button", { name: /2 baptized$/ }).waitFor({ timeout: 15_000 });
+  check("and the row carries the new figure", (await inRow.count()) === 0);
+  await page.goto(`${base}/my`);
+  check("the dashboard shows an admin the same overview", (await row(page).count()) === 1 && (await page.locator("#channels").textContent()).includes("Every channel at a glance"));
+  await mp.reload();
+  check("a member sees no overview of other channels", (await mp.locator("#channels").count()) === 0 && !(await mp.textContent("body")).includes("Every channel at a glance"));
+  await page.setViewportSize({ width: 390, height: 844 });
+  const cardRow = page.locator(`[data-channel-card="${created.areaId}"]`);
+  check("on a phone each channel is a card", (await cardRow.isVisible()) && !(await row(page).isVisible()) && (await cardRow.textContent()).includes("Posts, 7 days"));
+  await page.locator("#channels").screenshot({ path: join(shots, "channels-phone.png") });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.locator("#channels").screenshot({ path: join(shots, "channels.png") });
 } catch (e) {
   failed++;
   console.log(`FAIL  the check stopped: ${e instanceof Error ? e.stack : e}`);
 } finally {
   await browser?.close();
-  if (created.areaId) await db.from("areas").delete().eq("id", created.areaId); // its figures, stories and opens go with it
+  if (created.users.length) await db.from("videos").delete().in("user_id", created.users);
+  if (created.areaId) await db.from("areas").delete().eq("id", created.areaId); // its figures, stories, opens and stored Instagram numbers go with it
   for (const id of created.users) await db.auth.admin.deleteUser(id);
   const left = created.areaId ? (await db.from("team_impact_reports").select("id", { count: "exact", head: true }).eq("area_id", created.areaId)).count : 0;
   console.log(`cleaned up (${left ?? 0} rows left behind)`);

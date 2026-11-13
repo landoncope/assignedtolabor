@@ -4,18 +4,18 @@ import Nav from "@/components/Nav";
 import { getViewer } from "@/lib/auth";
 import { siteUrl } from "@/lib/email";
 import { daysAgo, dueText, formatDay, goalDef, goalStatus, type GoalState } from "@/lib/goals";
-import { IMPACT_COLS } from "@/lib/impact";
-import { loadStats, statsForDashboard, type StatsRow } from "@/lib/instagram-stats";
+import ChannelOverview from "@/components/ChannelOverview";
+import { loadChannelOverview, type ChannelRow } from "@/lib/channel-overview";
+import { loadImpact, type ImpactView } from "@/lib/impact";
+import { statsForDashboard, type StatsRow } from "@/lib/instagram-stats";
 import { LEAD_STATUS_LABEL, type LeadApplication } from "@/lib/lead";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { pageAddress } from "@/lib/team-page";
-import { AREA_SUMMARY_COLS, areaLabel, STATUS_LABEL, type AreaSummary, type ImpactReport, type TeamStory, type VideoWithArea } from "@/lib/types";
+import { AREA_SUMMARY_COLS, areaLabel, STATUS_LABEL, type AreaSummary, type VideoWithArea } from "@/lib/types";
 import ClaimCard, { type Claimable } from "./ClaimCard";
 import GoalCard, { type GoalView } from "./GoalCard";
 import LeadTeams, { type TeamMemberView, type TeamReport } from "./LeadTeams";
 import ProfileCard from "./ProfileCard";
-import type { ImpactView } from "./TeamImpact";
 import TeamStats, { type TeamOverview } from "./TeamStats";
 
 export const metadata: Metadata = { title: "Dashboard" };
@@ -53,11 +53,11 @@ export default async function MyPage({ searchParams }: PageProps<"/my">) {
     if (leadId) lead = (await supabase.from("lead_applications").select("status").eq("id", leadId as string).maybeSingle()).data as Pick<LeadApplication, "status"> | null;
   }
 
-  // The teams this person is on (member or lead); admins also get every other team, compactly.
+  // The teams this person is on (member or lead); admins also get every channel at a glance.
   let myTeams: AreaSummary[] = [];
-  let otherTeams: AreaSummary[] = [];
+  let channels: ChannelRow[] = [];
   const teamData = new Map<string, { overview: TeamOverview | null; stats: StatsRow | null }>();
-  const impact = new Map<string, ImpactView>();
+  let impact = new Map<string, ImpactView>();
   const reports: TeamReport[] = [];
   if (signedIn && viewer) {
     const [{ data: mem }, { data: areaRows }] = await Promise.all([
@@ -67,40 +67,24 @@ export default async function MyPage({ searchParams }: PageProps<"/my">) {
     const areas = (areaRows ?? []) as AreaSummary[];
     const mine = new Set<string>([...((mem ?? []) as { area_id: string }[]).map((m) => m.area_id), ...viewer.managedAreaIds]);
     myTeams = areas.filter((a) => mine.has(a.id));
-    otherTeams = viewer.isAdmin ? areas.filter((a) => !mine.has(a.id)) : [];
     const admin = createAdminClient();
-    // Only the viewer's own teams may be fetched from Instagram now; the admin's list of
-    // other teams shows what is cached (see src/lib/instagram-stats.ts for why).
-    await Promise.all([...myTeams, ...otherTeams].map(async (a) => {
-      const own = mine.has(a.id);
-      const [{ data: ov }, stats] = await Promise.all([
-        supabase.rpc("team_overview", { aid: a.id }),
-        (own ? statsForDashboard(admin, a.id, !!a.instagram_user_id) : loadStats(admin, a.id)).catch((e: unknown) => { console.error(`[dashboard] stats for ${a.id}: ${e instanceof Error ? e.message : String(e)}`); return null; }),
-      ]);
-      const row = (Array.isArray(ov) ? ov[0] : ov) as TeamOverview | undefined;
-      teamData.set(a.id, { overview: row ?? null, stats });
-    }));
-    // What each channel has led to: its figures (the newest and the one before), its
-    // stories, and how often its form page was opened. RLS shows a team's rows to its people.
-    const shownIds = [...myTeams, ...otherTeams].map((a) => a.id);
-    if (shownIds.length) {
-      const since = new Date(now.getTime() - 30 * 86400_000).toISOString().slice(0, 10);
-      const [{ data: reportRows }, { data: storyRows }, { data: dayRows }] = await Promise.all([
-        supabase.from("team_impact_reports").select(IMPACT_COLS).in("area_id", shownIds).order("as_of", { ascending: false }).limit(500),
-        supabase.from("team_stories").select("id, area_id, title, body, happened_on, created_at").in("area_id", shownIds).order("created_at", { ascending: false }).limit(200),
-        supabase.from("team_page_days").select("area_id, opens").in("area_id", shownIds).gte("day", since),
-      ]);
-      for (const a of [...myTeams, ...otherTeams]) {
-        const mineReports = ((reportRows ?? []) as ImpactReport[]).filter((r) => r.area_id === a.id);
-        const stories = ((storyRows ?? []) as TeamStory[]).filter((r) => r.area_id === a.id)
-          .sort((x, y) => (y.happened_on ?? y.created_at.slice(0, 10)).localeCompare(x.happened_on ?? x.created_at.slice(0, 10)));
-        const opens30 = ((dayRows ?? []) as { area_id: string; opens: number }[]).filter((d) => d.area_id === a.id).reduce((sum, d) => sum + d.opens, 0);
-        impact.set(a.id, {
-          latest: mineReports[0] ?? null, previous: mineReports[1] ?? null, stories,
-          page: a.slug && a.referral_form_url ? { address: pageAddress(siteUrl, a.slug), href: `/${a.slug}`, opens30 } : null,
-        });
-      }
-    }
+    // A team's Instagram numbers are fetched for the people on it; the admins' overview
+    // of every channel has its own, guarded refresh (see src/lib/instagram-stats.ts).
+    const [, impactByTeam, overviewRows] = await Promise.all([
+      Promise.all(myTeams.map(async (a) => {
+        const [{ data: ov }, stats] = await Promise.all([
+          supabase.rpc("team_overview", { aid: a.id }),
+          statsForDashboard(admin, a.id, !!a.instagram_user_id).catch((e: unknown) => { console.error(`[dashboard] stats for ${a.id}: ${e instanceof Error ? e.message : String(e)}`); return null; }),
+        ]);
+        const row = (Array.isArray(ov) ? ov[0] : ov) as TeamOverview | undefined;
+        teamData.set(a.id, { overview: row ?? null, stats });
+      })),
+      // What each of the person's channels has led to: figures, stories, form page opens.
+      loadImpact(supabase, myTeams, siteUrl, now),
+      viewer.isAdmin ? loadChannelOverview(supabase, admin, siteUrl, now) : Promise.resolve([] as ChannelRow[]),
+    ]);
+    impact = impactByTeam;
+    channels = overviewRows;
     // The lead's view of each team they lead (admins: every team).
     for (const a of areas.filter((x) => viewer.isAdmin || viewer.managedAreaIds.includes(x.id))) {
       const { data: rows } = await supabase.rpc("team_goal_report", { aid: a.id });
@@ -164,14 +148,7 @@ export default async function MyPage({ searchParams }: PageProps<"/my">) {
                   {myTeams.map((a) => <TeamStats key={a.id} team={a} overview={teamData.get(a.id)?.overview ?? null} stats={teamData.get(a.id)?.stats ?? null} impact={impact.get(a.id) ?? null} isLead={viewer.isAdmin || viewer.managedAreaIds.includes(a.id)} />)}
                 </div>
               )}
-              {otherTeams.length > 0 && (
-                <div className="card mt-3">
-                  <div className="label">All other teams (admins see every team)</div>
-                  <ul className="mt-1 divide-y divide-line">
-                    {otherTeams.map((a) => <li key={a.id} className="py-2"><TeamStats team={a} overview={teamData.get(a.id)?.overview ?? null} stats={teamData.get(a.id)?.stats ?? null} impact={impact.get(a.id) ?? null} isLead compact /></li>)}
-                  </ul>
-                </div>
-              )}
+              {channels.length > 0 && <div className="mt-3"><ChannelOverview rows={channels} /></div>}
             </section>
 
             <GoalCard current={profile?.upload_goal ?? null} email={viewer.email} view={goalView} uploads30={uploads30} />

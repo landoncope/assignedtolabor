@@ -380,6 +380,11 @@ try {
   await db.from("videos").update({ status: "approved", reviewed_by: created.userId, reviewed_at: new Date().toISOString(), publish_state: "queued", publish_requested_at: new Date().toISOString(), publish_requested_by: created.userId }).eq("id", D);
   const q1 = await cron();
   check("cron queues the render for a queued post", q1.posts?.some((p) => p.id === D && p.before === "queued" && p.after?.rendering === true) && (await video(D, "render_state")).render_state === "queued", JSON.stringify(q1.posts));
+  // Production's own cron is unscoped and would send this mock token to the real Instagram
+  // (refused, connection forgotten, the rest of this run broken: seen 2026-11-12). An
+  // unscoped sweep leaves a team connected in the last few minutes alone; a dry run shows it.
+  const outside = await (await fetch(`${base}/api/cron/publish?dry=1`, { headers: { authorization: `Bearer ${env.CRON_SECRET}` } })).json();
+  check("an unscoped sweep leaves a just-connected team's post alone", Array.isArray(outside.posts) && Array.isArray(outside.renders) && !outside.posts.some((p) => p.id === D) && !outside.renders.some((r) => r.id === D), JSON.stringify(outside).slice(0, 300));
   const q2 = await cron();
   check("the next run renders it and starts the post", q2.renders?.some((r) => r.id === D && /^rendered \(0 cues/.test(r.result) && /post processing/.test(r.result)), JSON.stringify(q2.renders));
   await cron(); // IN_PROGRESS

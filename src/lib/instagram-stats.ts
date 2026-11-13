@@ -12,10 +12,14 @@ import { forgetRejected, tokenRejected } from "@/lib/instagram-publish";
  * later view of numbers older than a few hours refreshes them after the response.
  * Pages read the cache with the service role after checking the viewer is on the team.
  *
- * Only a view by someone ON the team triggers a fetch, never a cron and never an
- * admin's list of other teams: a local test build points the Instagram client at a
- * mock, and a real token sent to the mock (or a mock token sent by production to the
- * real Instagram) comes back "invalid", which forgets the connection.
+ * A view by someone ON the team triggers a fetch, and since 2026-11-12 so does the
+ * admins' overview of every channel (`freshStatsForOverview`), but never a cron. The
+ * hazard: a local test build points the Instagram client at a mock while reading the
+ * live database, and a real token sent to the mock (or a mock token sent by production
+ * to the real Instagram) comes back "invalid", which forgets the connection. A team
+ * member's view only ever fetches that member's own team; the overview touches every
+ * team, so it fetches only when the client is pointed at the real Instagram and only
+ * for connections older than a day (a test's mock connection lives for minutes).
  */
 export const STATS_MAX_AGE_HOURS = 6;
 export const RECENT_POSTS = 24;
@@ -91,4 +95,28 @@ export async function statsForDashboard(db: Db, areaId: string, connected: boole
   if (!s) return refreshStats(db, areaId);
   if (statsStale(s)) after(() => refreshStats(db, areaId).catch((e: unknown) => console.error(`[instagram-stats] refresh for ${areaId}: ${e instanceof Error ? e.message : String(e)}`)));
   return s;
+}
+
+/**
+ * For the admins' overview of every channel: each connected team's numbers, refreshed
+ * now when they are older than a few hours, within a few seconds in all (a refresh that
+ * takes longer finishes after the response and shows on the next view). Returns what is
+ * stored for every team that has anything stored. See the note at the top for the two
+ * guards.
+ */
+export async function freshStatsForOverview(db: Db, teams: { id: string; connectedAt: string | null }[], budgetMs = 5000): Promise<Map<string, StatsRow>> {
+  const { data, error } = await db.from("instagram_stats").select(COLS);
+  if (error) throw new Error(error.message);
+  const rows = new Map(((data ?? []) as StatsRow[]).map((r) => [r.area_id, r]));
+  if (!ig.usingRealInstagram()) return rows;
+  const dayAgo = Date.now() - 86400_000;
+  const due = teams.filter((t) => t.connectedAt && new Date(t.connectedAt).getTime() < dayAgo && statsStale(rows.get(t.id)));
+  if (!due.length) return rows;
+  const work = Promise.all(due.map(async (t) => {
+    const fresh = await refreshStats(db, t.id).catch((e: unknown) => { console.error(`[instagram-stats] overview refresh for ${t.id}: ${e instanceof Error ? e.message : String(e)}`); return null; });
+    if (fresh) rows.set(t.id, fresh);
+  }));
+  after(() => work);
+  await Promise.race([work, new Promise((resolve) => setTimeout(resolve, budgetMs))]);
+  return rows;
 }
